@@ -42,8 +42,9 @@ function safeJoin(rootDir, requestPath) {
     .replace(/^(\.\.[/\\])+/, "")
     .replace(/^[/\\]+/, "");
   const joined = path.join(rootDir, relativePath);
+  const rootPath = path.resolve(rootDir);
   const resolved = path.resolve(joined);
-  if (!resolved.startsWith(path.resolve(rootDir))) {
+  if (resolved !== rootPath && !resolved.startsWith(`${rootPath}${path.sep}`)) {
     return null;
   }
   return resolved;

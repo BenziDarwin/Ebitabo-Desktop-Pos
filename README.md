@@ -1,36 +1,134 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ebitabo POS Desktop + Web
 
-## Getting Started
+Next.js 16 app wrapped with Electron.
 
-First, run the development server:
+The web app is built as a static export (`out/`), and the Electron desktop app serves that build through a local bridge server in production.
+
+## Requirements
+
+- Node.js 20+
+- npm
+
+## Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Scripts
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `npm run dev`: run Next.js dev server (web only).
+- `npm run dev:web`: run Next.js dev server on fixed `localhost:3000`.
+- `npm run dev:electron`: launch Electron in development mode.
+- `npm run electron:dev`: run web + Electron together (recommended for desktop development).
+- `npm run build`: production Next.js build (generates static export in `out/`).
+- `npm run dist`: package desktop app for current platform.
+- `npm run dist:win`: package Windows installer.
+- `npm run dist:linux`: package Linux build.
+- `npm run lint`: run ESLint.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Desktop Development Flow
 
-## Learn More
+Use:
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm run electron:dev
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Behavior:
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Next dev server is forced to `localhost:3000`.
+- Electron waits for TCP port `3000`.
+- If port `3000` is already in use, startup fails fast and clearly.
+- If another `next dev` instance is already running for this repo, Next.js 16 lockfile behavior will block a duplicate instance.
 
-## Deploy on Vercel
+## Production Desktop Runtime
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+In production, Electron does not load `file://.../out/index.html` directly.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+It starts a local desktop bridge (`electron/desktop-bridge.js`) that:
+
+- serves static files from `out/`,
+- forwards `/api` and `/api/*` to a backend target when configured,
+- returns `503` for `/api/*` when no proxy target is configured.
+
+## API Proxy Configuration (Packaged App)
+
+Set `EBITABO_API_PROXY_TARGET` to your backend URL:
+
+PowerShell:
+
+```powershell
+$env:EBITABO_API_PROXY_TARGET="https://api.example.com"
+```
+
+CMD:
+
+```cmd
+set EBITABO_API_PROXY_TARGET=https://api.example.com
+```
+
+Bash:
+
+```bash
+export EBITABO_API_PROXY_TARGET=https://api.example.com
+```
+
+Then start/package the app.
+
+## Build And Share
+
+For Windows:
+
+```bash
+npm run dist:win
+```
+
+For Linux:
+
+```bash
+npm run dist:linux
+```
+
+Share the generated installer/artifacts from the `dist/` directory with users.
+
+## Next.js / Static Export Notes
+
+- `next.config.ts` uses `output: "export"` for desktop packaging.
+- `assetPrefix` is `./` in production so static assets resolve correctly in packaged desktop builds.
+- `turbopack.root` is set to project root to avoid wrong parent-root inference warnings.
+- `images.unoptimized` is enabled for static export compatibility.
+
+## Troubleshooting
+
+### `npm run dev` shows `Can't resolve 'tailwindcss' in C:\Users\...\Desktop\Code`
+
+This usually means resolution is happening from a parent folder context. Use commands from this project root and ensure dependencies are installed:
+
+```bash
+npm install
+```
+
+### Desktop build opens but has no CSS / broken design
+
+Use the local bridge runtime (already implemented in `electron/main.js`) and ensure the app is built before packaging:
+
+```bash
+npm run build
+npm run dist:win
+```
+
+### `electron-builder` winCodeSign symlink privilege error on Windows
+
+If you see:
+
+`Cannot create symbolic link : A required privilege is not held by the client`
+
+Use one of:
+
+- enable Windows Developer Mode, or
+- run terminal as Administrator.
+
+### Lint errors for `require()` in Electron files
+
+`eslint.config.mjs` includes an override for `electron/**/*.js` and `pre-commit.js` to allow CommonJS `require()` usage in Node/Electron scripts.
