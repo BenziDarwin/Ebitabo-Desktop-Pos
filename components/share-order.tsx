@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -11,6 +10,8 @@ import {
 } from "@/components/ui/dialog";
 import { Share2, Copy, Check, Mail, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from "@/provider/auth-provider";
+import { formatCurrency } from "@/lib/format-currency";
 import type { CartItem } from "@/lib/types";
 
 interface ShareOrderProps {
@@ -28,6 +29,7 @@ export function ShareOrder({
   clientName,
   clientEmail,
 }: ShareOrderProps) {
+  const { currency } = useAuth();
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -36,11 +38,16 @@ Order #${orderId.slice(-6)}
 Customer: ${clientName || "Guest"}
 
 Items:
-${items.map((item) => `- ${item.name} x${item.quantity}: $${item.subtotal.toFixed(2)}`).join("\n")}
+${items
+  .map(
+    (item) =>
+      `- ${item.name} x${item.quantity}: ${formatCurrency(item.subtotal, currency)}`,
+  )
+  .join("\n")}
 
-Total: $${total.toFixed(2)}
+Total: ${formatCurrency(total, currency)}
 
-Ordered from Coffee Corner POS System
+Ordered from Ebtabo POS System
   `.trim();
 
   const handleCopyToClipboard = () => {
@@ -51,7 +58,7 @@ Ordered from Coffee Corner POS System
   };
 
   const handleShareViaEmail = () => {
-    const subject = `Coffee Corner Order #${orderId.slice(-6)}`;
+    const subject = `Ebtabo Order #${orderId.slice(-6)}`;
     const body = encodeURIComponent(orderSummary);
     window.open(
       `mailto:${clientEmail || ""}?subject=${encodeURIComponent(subject)}&body=${body}`,

@@ -1,25 +1,32 @@
 "use client";
 
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/provider/auth-provider";
 import { POSLayout } from "@/components/pos-layout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
-import { User, Mail, Briefcase, Calendar, LogOut, Lock } from "lucide-react";
+import {
+  User,
+  Mail,
+  Briefcase,
+  Calendar,
+  LogOut,
+  Building2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export default function ProfilePage() {
-  const { user, logout } = useAuth();
+  const { user, business, currency, logout } = useAuth();
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     toast.success("Logged out successfully");
     router.push("/login");
   };
 
-  if (!user) {
+  if (!user && !business) {
     return (
       <POSLayout currentPage="profile">
         <div className="max-w-2xl mx-auto p-6">
@@ -48,9 +55,11 @@ export default function ProfilePage() {
               </div>
               <div>
                 <h2 className="text-2xl font-bold text-slate-900">
-                  {user.name}
+                  {user?.name || user?.username || "Cashier"}
                 </h2>
-                <p className="text-slate-600 capitalize">{user.role}</p>
+                <p className="text-slate-600 capitalize">
+                  {business?.account_type || "POS User"}
+                </p>
               </div>
             </div>
 
@@ -63,91 +72,77 @@ export default function ProfilePage() {
                   Name
                 </label>
                 <div className="px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-900">
-                  {user.name}
+                  {user?.name || user?.username || "Not provided"}
                 </div>
               </div>
 
-              {/* Email */}
+              {/* Username */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
                   <Mail className="w-4 h-4" />
-                  Email
+                  Username
                 </label>
                 <div className="px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-900">
-                  {user.email}
+                  {user?.username || "Not provided"}
                 </div>
               </div>
 
-              {/* Role */}
+              {/* Business Type */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
                   <Briefcase className="w-4 h-4" />
-                  Role
+                  Account Type
                 </label>
                 <div className="flex items-center gap-2">
                   <Badge className="bg-blue-100 text-blue-800 capitalize">
-                    {user.role}
+                    {business?.account_type || "N/A"}
                   </Badge>
                 </div>
               </div>
 
-              {/* Member Since */}
+              {/* Currency */}
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
                   <Calendar className="w-4 h-4" />
-                  Member Since
+                  Currency
                 </label>
                 <div className="px-4 py-2 bg-slate-50 rounded-lg border border-slate-200 text-slate-900">
-                  {new Date(user.createdAt).toLocaleDateString()}
+                  {currency?.name || currency?.full_name || "N/A"}
                 </div>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Account Settings */}
+        {/* Business Details */}
         <Card className="p-8">
           <h3 className="text-lg font-bold text-slate-900 mb-6">
-            Account Settings
+            Business Details
           </h3>
 
           <div className="space-y-4">
-            {/* Change PIN (Demo) */}
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center gap-3">
-                <Lock className="w-5 h-5 text-slate-600" />
+                <Building2 className="w-5 h-5 text-slate-600" />
                 <div>
-                  <p className="font-medium text-slate-900">Change PIN</p>
+                  <p className="font-medium text-slate-900">Business Name</p>
                   <p className="text-sm text-slate-600">
-                    Update your 4-digit PIN
+                    {business?.name || "N/A"}
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => toast.info("PIN change coming soon")}
-                variant="outline"
-              >
-                Update
-              </Button>
             </div>
 
-            {/* Notifications (Demo) */}
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
               <div className="flex items-center gap-3">
                 <Mail className="w-5 h-5 text-slate-600" />
                 <div>
-                  <p className="font-medium text-slate-900">Notifications</p>
+                  <p className="font-medium text-slate-900">Business Email</p>
                   <p className="text-sm text-slate-600">
-                    Manage notification preferences
+                    {business?.company_email || "Not provided"}
                   </p>
                 </div>
               </div>
-              <Button
-                onClick={() => toast.info("Notification settings coming soon")}
-                variant="outline"
-              >
-                Configure
-              </Button>
             </div>
           </div>
         </Card>
@@ -156,8 +151,7 @@ export default function ProfilePage() {
         <Card className="p-8 border-red-200 bg-red-50">
           <h3 className="text-lg font-bold text-red-900 mb-4">Danger Zone</h3>
           <p className="text-sm text-red-800 mb-6">
-            Once you logout, you&apos;ll need to enter your PIN again to access
-            the system.
+            Logging out clears local session keys and returns you to login.
           </p>
           <Button
             onClick={handleLogout}
@@ -187,8 +181,8 @@ export default function ProfilePage() {
               performance and analytics
             </p>
             <p>
-              <span className="font-semibold">Your PIN:</span> Your current PIN
-              is {user.pin}
+              <span className="font-semibold">Client URL:</span>{" "}
+              {business?.apiUrl || "Not available"}
             </p>
           </div>
         </Card>

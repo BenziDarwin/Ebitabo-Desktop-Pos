@@ -1,0 +1,16 @@
+export const STORAGE_KEYS = {
+  apiKey: "api_key",
+  clientUrl: "client_url",
+  businessDetails: "business_details",
+  currencyDetails: "currency_details",
+  userId: "userID",
+  authCookies: "auth_cookies",
+  user: "pos_user",
+  catalogProducts: "catalog_products",
+  catalogServices: "catalog_services",
+  catalogLastSyncedAt: "catalog_last_synced_at",
+  cartState: "cart_state",
+  orderDrafts: "order_drafts",
+  activeOrderDraftId: "active_order_draft_id",
+  salesRecords: "sales_records",
+} as const;

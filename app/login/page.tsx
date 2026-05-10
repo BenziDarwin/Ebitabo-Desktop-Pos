@@ -3,26 +3,71 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/provider/auth-provider";
+import appLogo from "@/assets/images/logo.png";
+import homepageImage from "@/assets/images/homepage.jpg";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Coffee, ShieldCheck, TimerReset, TrendingUp } from "lucide-react";
+import { STORAGE_KEYS } from "@/lib/constants";
+import { Storage } from "@/lib/storage";
 import { toast } from "sonner";
+
+function StyledField({
+  label,
+  value,
+  type = "text",
+  placeholder,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  type?: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="relative border border-[#c1bbbb] bg-white px-5 py-3">
+      <p
+        className="mb-1 text-sm text-black/60"
+        style={{ fontFamily: "Roboto, sans-serif" }}
+      >
+        {label}
+      </p>
+      <Input
+        type={type}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className="h-7 border-0 bg-transparent px-0 py-0 text-base text-[#3751fe] shadow-none focus-visible:ring-0"
+      />
+      <span className="absolute inset-y-0 left-0 w-1 bg-[#3751fe]" />
+    </div>
+  );
+}
 
 export default function LoginPage() {
   const router = useRouter();
   const { login, isLoading } = useAuth();
-  const [url, setUrl] = useState("https://coffee.local");
+  const [url, setUrl] = useState(
+    () =>
+      Storage.getItem(STORAGE_KEYS.clientUrl) ||
+      process.env.NEXT_PUBLIC_EBITABO_API_PROXY_TARGET ||
+      "",
+  );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
     setError("");
 
     if (!url.trim()) {
-      setError("URL is required");
+      setError("Server URL is required");
       return;
     }
 
@@ -38,156 +83,146 @@ export default function LoginPage() {
 
     const success = await login(url, username, password);
     if (success) {
-      toast.success("Login successful!");
+      toast.success("Login successful");
       router.push("/sell");
-    } else {
-      setError("Invalid credentials");
-      toast.error("Invalid URL, username, or password");
+      return;
     }
+
+    setError("Invalid URL, username, or password");
+    toast.error("Invalid URL, username, or password");
   };
 
   return (
-    <div className="h-dvh overflow-hidden bg-slate-950">
-      <div className="mx-auto grid h-full w-full max-w-7xl grid-cols-1 gap-3 p-3 md:grid-cols-2 md:gap-4 md:p-4 lg:p-6">
-        {/* Left: Sign in form */}
-        <section className="flex h-full min-h-0 items-center justify-center rounded-3xl bg-white px-5 py-6 shadow-2xl sm:px-8">
-          <div className="w-full max-w-md space-y-5">
-            <div className="text-center">
-              <div className="mx-auto mb-3 inline-flex size-14 items-center justify-center rounded-full bg-blue-600">
-                <Coffee className="size-7 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">
-                Coffee Corner
-              </h1>
-              <p className="mt-1 text-sm text-slate-600">Cashier sign in</p>
+    <div className="h-dvh overflow-hidden bg-[#f2f2f2]">
+      <div className="grid h-full w-full grid-cols-1 lg:grid-cols-[46%_54%]">
+        <section className="flex h-full flex-col overflow-hidden px-6 py-6 sm:px-10 lg:px-[86px] lg:py-10">
+          <div className="mb-16 flex items-center gap-3 lg:mb-20">
+            <div className="relative size-9 overflow-hidden rounded-md border border-slate-200 bg-white">
+              <Image
+                src={appLogo}
+                alt="Ebtabo logo"
+                fill
+                className="object-contain p-1"
+                priority
+              />
+            </div>
+            <p
+              className="text-3xl font-bold text-[#3751fe]"
+              style={{ fontFamily: "Roboto, sans-serif" }}
+            >
+              Ebtabo
+            </p>
+          </div>
+
+          <div className="max-w-[560px]">
+            <p
+              className="text-lg text-black/60"
+              style={{ fontFamily: "Roboto, sans-serif" }}
+            >
+              Welcome back! Please login to your account.
+            </p>
+          </div>
+
+          <form
+            onSubmit={handleLogin}
+            className="mt-10 w-full max-w-[560px] space-y-4 lg:mt-14"
+          >
+            <StyledField
+              label="Username"
+              value={username}
+              onChange={(value) => {
+                setUsername(value);
+                setError("");
+              }}
+              placeholder="Enter your username"
+              disabled={isLoading}
+            />
+
+            <StyledField
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(value) => {
+                setPassword(value);
+                setError("");
+              }}
+              placeholder="Enter your password"
+              disabled={isLoading}
+            />
+
+            <StyledField
+              label="Server URL"
+              value={url}
+              onChange={(value) => {
+                setUrl(value);
+                setError("");
+              }}
+              placeholder="https://your-business-domain.com"
+              disabled={isLoading}
+            />
+
+            <div
+              className="flex items-center justify-between pt-1 text-sm"
+              style={{ fontFamily: "Roboto, sans-serif" }}
+            >
+              <label className="inline-flex items-center gap-2 text-black/75">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                  className="size-4 accent-[#3751fe]"
+                />
+                Remember me
+              </label>
+              <button
+                type="button"
+                onClick={() =>
+                  toast.info(
+                    "Please contact your administrator to reset password.",
+                  )
+                }
+                className="text-black/65 underline-offset-2 hover:underline"
+              >
+                Forgot Password?
+              </button>
             </div>
 
-            <form onSubmit={handleLogin} className="space-y-3.5">
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  URL
-                </label>
-                <Input
-                  type="url"
-                  placeholder="https://coffee.local"
-                  value={url}
-                  onChange={(e) => {
-                    setUrl(e.target.value);
-                    setError("");
-                  }}
-                  disabled={isLoading}
-                  className="h-11 w-full"
-                />
+            {error && (
+              <div className="border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+                {error}
               </div>
+            )}
 
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Username
-                </label>
-                <Input
-                  type="text"
-                  placeholder="Enter your username"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    setError("");
-                  }}
-                  disabled={isLoading}
-                  className="h-11 w-full"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-slate-700">
-                  Password
-                </label>
-                <Input
-                  type="password"
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setError("");
-                  }}
-                  disabled={isLoading}
-                  className="h-11 w-full"
-                />
-              </div>
-
-              {error && (
-                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-                  <p className="text-sm font-medium text-red-800">{error}</p>
-                </div>
-              )}
-
+            <div className="flex flex-wrap gap-4 pt-3">
               <Button
                 type="submit"
-                disabled={
-                  !url.trim() || !username.trim() || !password || isLoading
-                }
-                className="h-11 w-full text-base font-semibold bg-blue-600 hover:bg-blue-700"
+                disabled={isLoading}
+                className="h-[54px] min-w-[140px] rounded-none bg-[#3751fe] px-8 text-base font-semibold hover:bg-[#2f44d5]"
               >
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
-            </form>
-
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-              <p className="mb-2 text-sm font-semibold text-slate-900">
-                Demo Credentials
-              </p>
-              <p>URL: https://coffee.local</p>
-              <p>Sarah: sarah / password123</p>
-              <p>Mike: mike / password123</p>
-              <p>Lisa: lisa / password123</p>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-[54px] min-w-[140px] rounded-none border-[#3751fe] px-8 text-base font-semibold text-[#3751fe] hover:bg-[#eef1ff]"
+                onClick={() =>
+                  toast.info("Use your assigned cashier account to login.")
+                }
+              >
+                Sign Up
+              </Button>
             </div>
-          </div>
+          </form>
         </section>
 
-        {/* Right: Image + message panel */}
-        <section className="relative hidden h-full min-h-0 overflow-hidden rounded-3xl md:block">
+        <section className="relative hidden h-full overflow-hidden bg-[rgba(229,229,229,0.41)] lg:block">
           <Image
-            src="/placeholder.jpg"
-            alt="Coffee bar workspace"
+            src={homepageImage}
+            alt="Homepage visual"
             fill
-            sizes="(min-width: 768px) 50vw, 100vw"
             className="object-cover"
+            priority
           />
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-900/70 via-slate-900/45 to-blue-900/70" />
-          <div className="absolute inset-0 flex h-full flex-col justify-between p-6 text-white lg:p-8">
-            <div>
-              <p className="text-sm font-medium text-blue-100">
-                Point of Sale System
-              </p>
-              <h2 className="mt-2 text-3xl font-bold leading-tight lg:text-4xl">
-                Keep every shift fast, clear, and in control.
-              </h2>
-              <p className="mt-3 max-w-md text-sm text-slate-100/95 lg:text-base">
-                Sign in and start selling with live totals, drafts, and daily
-                history in one smooth flow.
-              </p>
-            </div>
-
-            <div className="grid gap-3">
-              <div className="flex items-start gap-3 rounded-2xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <ShieldCheck className="mt-0.5 size-4 shrink-0 text-blue-100" />
-                <p className="text-sm text-slate-50">
-                  Secure role-based access for each cashier session.
-                </p>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <TimerReset className="mt-0.5 size-4 shrink-0 text-blue-100" />
-                <p className="text-sm text-slate-50">
-                  Resume saved drafts instantly during busy hours.
-                </p>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-white/20 bg-white/10 p-3 backdrop-blur-sm">
-                <TrendingUp className="mt-0.5 size-4 shrink-0 text-blue-100" />
-                <p className="text-sm text-slate-50">
-                  Track sales, taxes, and performance as orders close.
-                </p>
-              </div>
-            </div>
-          </div>
         </section>
       </div>
     </div>

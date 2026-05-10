@@ -1,22 +1,22 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/provider/auth-provider";
 import { useEffect } from "react";
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isReady } = useAuth();
 
   useEffect(() => {
-    if (!isLoading) {
+    if (isReady) {
       if (isAuthenticated) {
         router.push("/sell");
       } else {
         router.push("/login");
       }
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isReady, router]);
 
   return (
     <div className="min-h-screen flex items-center justify-center">

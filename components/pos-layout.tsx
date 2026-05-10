@@ -1,10 +1,11 @@
 "use client";
 
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/provider/auth-provider";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
 import { ProtectedRoute } from "./protected-route";
 import { Button } from "@/components/ui/button";
+import Image from "next/image";
+import appLogo from "@/assets/images/logo.png";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,7 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Coffee, LogOut, User, Settings } from "lucide-react";
+import { LogOut, User } from "lucide-react";
 import Link from "next/link";
 
 interface POSLayoutProps {
@@ -21,11 +22,11 @@ interface POSLayoutProps {
 }
 
 export function POSLayout({ children, currentPage }: POSLayoutProps) {
-  const { user, logout } = useAuth();
+  const { user, business, logout } = useAuth();
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     router.push("/login");
   };
 
@@ -43,12 +44,15 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
           <div className="flex items-center justify-between px-6 py-4">
             {/* Logo */}
             <Link href="/sell" className="flex items-center gap-2">
-              <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
-                <Coffee className="w-6 h-6 text-white" />
+              <div className="relative inline-flex items-center justify-center w-10 h-10 rounded-lg bg-white border border-slate-200 overflow-hidden">
+                <Image
+                  src={appLogo}
+                  alt="Ebtabo logo"
+                  fill
+                  className="object-contain p-1"
+                />
               </div>
-              <span className="text-lg font-bold text-slate-900">
-                Coffee Corner
-              </span>
+              <span className="text-lg font-bold text-slate-900">Ebtabo</span>
             </Link>
 
             {/* Navigation */}
@@ -72,10 +76,10 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
             <div className="flex items-center gap-4">
               <div className="hidden sm:block text-right">
                 <p className="text-sm font-semibold text-slate-900">
-                  {user?.name}
+                  {user?.name || user?.username || business?.name || "User"}
                 </p>
                 <p className="text-xs text-slate-500 capitalize">
-                  {user?.role}
+                  {business?.account_type || user?.role || "POS User"}
                 </p>
               </div>
 

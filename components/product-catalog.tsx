@@ -1,48 +1,168 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePOS } from "@/lib/context/pos-context";
-import { getProducts, searchProducts, getServices } from "@/lib/mock-api";
+import { usePOS } from "@/provider/pos-provider";
+import { useAuth } from "@/provider/auth-provider";
+import {
+  getProducts,
+  searchProducts,
+  getServices,
+} from "@/services/catalog-service";
 import type { Product, Service } from "@/lib/types";
+import { STORAGE_KEYS } from "@/lib/constants";
+import { Storage } from "@/lib/storage";
+import { formatCurrency } from "@/lib/format-currency";
+import { resolveImageUri } from "@/lib/resolve-image-uri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ShoppingCart, Search } from "lucide-react";
+import productFallbackImage from "@/assets/images/empty/product.png";
+import serviceFallbackImage from "@/assets/images/empty/service.png";
 import { toast } from "sonner";
+
+const LOG_PREFIX = "[CatalogSync]";
+
+type CatalogImageKind = "product" | "service";
+
+interface CatalogCardImageProps {
+  imageValue?: string;
+  alt: string;
+  kind: CatalogImageKind;
+  baseUrl?: string | null;
+}
+
+function CatalogCardImage({
+  imageValue,
+  alt,
+  kind,
+  baseUrl,
+}: CatalogCardImageProps) {
+  const [failedImageSrc, setFailedImageSrc] = useState<string | null>(null);
+  const imageSrc = resolveImageUri(imageValue, {
+    baseUrl: baseUrl ?? undefined,
+  });
+  const didFailToLoad = Boolean(imageSrc) && failedImageSrc === imageSrc;
+  const fallbackSrc =
+    kind === "product" ? productFallbackImage.src : serviceFallbackImage.src;
+
+  if (!imageSrc || didFailToLoad) {
+    return (
+      <div className="h-32 bg-slate-50 flex items-center justify-center p-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={fallbackSrc}
+          alt={`${alt} placeholder`}
+          className="h-full w-full object-contain"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="h-32 bg-white">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageSrc}
+        alt={alt}
+        loading="lazy"
+        className="h-full w-full object-contain"
+        onError={() => {
+          console.warn(`${LOG_PREFIX} image load failed`, {
+            item: alt,
+            kind,
+            srcPreview: imageSrc.slice(0, 120),
+          });
+          if (imageSrc) {
+            setFailedImageSrc(imageSrc);
+          }
+        }}
+      />
+    </div>
+  );
+}
 
 interface ProductCatalogProps {
   onSelectProduct?: (product: Product) => void;
+  refreshKey?: number;
+  isSyncingCatalog?: boolean;
 }
 
-export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
+export function ProductCatalog({
+  onSelectProduct,
+  refreshKey = 0,
+  isSyncingCatalog = false,
+}: ProductCatalogProps) {
   const { addToCart } = usePOS();
+  const { currency } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [isLoading, setIsLoading] = useState(true);
+  const [clientUrl, setClientUrl] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     const loadData = async () => {
       setIsLoading(true);
+      setClientUrl(Storage.getItem(STORAGE_KEYS.clientUrl));
       const [productsData, servicesData] = await Promise.all([
         getProducts(),
         getServices(),
       ]);
+      console.info(`${LOG_PREFIX} ProductCatalog loadData`, {
+        refreshKey,
+        products: productsData.length,
+        services: servicesData.length,
+      });
+
+      if (!isMounted) return;
       setProducts(productsData);
       setServices(servicesData);
       setIsLoading(false);
     };
-    loadData();
-  }, []);
+
+    void loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [refreshKey]);
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
+    console.info(`${LOG_PREFIX} ProductCatalog search`, {
+      query,
+      selectedCategory,
+    });
     if (query.trim()) {
-      const results = await searchProducts(query);
-      setProducts(results);
+      const [productResults, allServices] = await Promise.all([
+        searchProducts(query),
+        getServices(),
+      ]);
+      const needle = query.trim().toLowerCase();
+      const serviceResults = allServices.filter((service) =>
+        service.name.toLowerCase().includes(needle),
+      );
+      console.info(`${LOG_PREFIX} ProductCatalog search results`, {
+        query,
+        products: productResults.length,
+        services: serviceResults.length,
+      });
+      setProducts(productResults);
+      setServices(serviceResults);
     } else {
-      const data = await getProducts();
-      setProducts(data);
+      const [productsData, servicesData] = await Promise.all([
+        getProducts(),
+        getServices(),
+      ]);
+      console.info(`${LOG_PREFIX} ProductCatalog search reset`, {
+        products: productsData.length,
+        services: servicesData.length,
+      });
+      setProducts(productsData);
+      setServices(servicesData);
     }
   };
 
@@ -131,7 +251,9 @@ export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
       <div className="flex-1 overflow-y-auto p-4">
         {isLoading ? (
           <div className="flex items-center justify-center h-32">
-            <p className="text-slate-500">Loading...</p>
+            <p className="text-slate-500">
+              {isSyncingCatalog ? "Syncing catalog..." : "Loading..."}
+            </p>
           </div>
         ) : displayedItems.products.length === 0 &&
           displayedItems.services.length === 0 ? (
@@ -154,10 +276,12 @@ export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
                       key={product.id}
                       className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
                     >
-                      {/* Product Image Placeholder */}
-                      <div className="h-32 bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center">
-                        <ShoppingCart className="w-8 h-8 text-slate-400" />
-                      </div>
+                      <CatalogCardImage
+                        imageValue={product.image}
+                        alt={product.name}
+                        kind="product"
+                        baseUrl={clientUrl}
+                      />
 
                       {/* Product Info */}
                       <div className="p-3">
@@ -168,7 +292,7 @@ export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
 
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-lg font-bold text-blue-600">
-                            ${product.price.toFixed(2)}
+                            {formatCurrency(product.price, currency)}
                           </span>
                           <span
                             className={`text-xs font-medium px-2 py-1 rounded ${
@@ -213,10 +337,12 @@ export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
                       key={service.id}
                       className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
                     >
-                      {/* Service Image Placeholder */}
-                      <div className="h-32 bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
-                        <ShoppingCart className="w-8 h-8 text-blue-400" />
-                      </div>
+                      <CatalogCardImage
+                        imageValue={service.image}
+                        alt={service.name}
+                        kind="service"
+                        baseUrl={clientUrl}
+                      />
 
                       {/* Service Info */}
                       <div className="p-3">
@@ -227,7 +353,7 @@ export function ProductCatalog({ onSelectProduct }: ProductCatalogProps) {
 
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-lg font-bold text-blue-600">
-                            ${service.price.toFixed(2)}
+                            {formatCurrency(service.price, currency)}
                           </span>
                         </div>
 

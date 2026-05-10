@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { usePOS } from "@/lib/context/pos-context";
-import { useAuth } from "@/lib/context/auth-context";
+import { usePOS } from "@/provider/pos-provider";
+import { useAuth } from "@/provider/auth-provider";
 import { POSLayout } from "@/components/pos-layout";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,16 +11,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { OrderDetailsDialog } from "@/components/order-details-dialog";
 import { Trash2, Eye, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { formatCurrency } from "@/lib/format-currency";
 import type { OrderDraft, CartItem } from "@/lib/types";
 
 export default function OrdersPage() {
+  const { currency } = useAuth();
   const router = useRouter();
-  const { user } = useAuth();
   const {
     orderDrafts,
     loadOrderDraft,
@@ -49,20 +49,22 @@ export default function OrdersPage() {
 
   const handleAddItemsToDraft = (items: CartItem[]) => {
     if (selectedDraft) {
+      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const tax = items.reduce(
+        (sum, item) => sum + item.subtotal * item.tax,
+        0,
+      );
+      const discountAmount =
+        selectedDraft.discountType === "amount"
+          ? selectedDraft.discount
+          : subtotal * (selectedDraft.discount / 100);
       const updated: OrderDraft = {
         ...selectedDraft,
         items,
-        subtotal: items.reduce((sum, item) => sum + item.subtotal, 0),
-        tax: items.reduce((sum, item) => sum + item.subtotal * item.tax, 0),
-        total:
-          items.reduce(
-            (sum, item) => sum + item.subtotal + item.subtotal * item.tax,
-            0,
-          ) -
-          (selectedDraft.discountType === "amount"
-            ? selectedDraft.discount
-            : items.reduce((sum, item) => sum + item.subtotal, 0) *
-              (selectedDraft.discount / 100)),
+        subtotal,
+        tax,
+        total: subtotal + tax - discountAmount,
+        updatedAt: new Date(),
       };
       saveOrderDraft(updated);
       setSelectedDraft(updated);
@@ -152,7 +154,7 @@ export default function OrdersPage() {
                             {item.name} x{item.quantity}
                           </span>
                           <span className="font-medium">
-                            ${item.subtotal.toFixed(2)}
+                            {formatCurrency(item.subtotal, currency)}
                           </span>
                         </div>
                       ))}
@@ -169,31 +171,33 @@ export default function OrdersPage() {
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-600">Subtotal:</span>
                       <span className="font-medium">
-                        ${draft.subtotal.toFixed(2)}
+                        {formatCurrency(draft.subtotal, currency)}
                       </span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-slate-600">Tax:</span>
                       <span className="font-medium">
-                        ${draft.tax.toFixed(2)}
+                        {formatCurrency(draft.tax, currency)}
                       </span>
                     </div>
                     {draft.discount > 0 && (
                       <div className="flex justify-between text-sm text-red-600">
                         <span>Discount:</span>
                         <span className="font-medium">
-                          -$
-                          {(draft.discountType === "amount"
-                            ? draft.discount
-                            : draft.subtotal * (draft.discount / 100)
-                          ).toFixed(2)}
+                          -
+                          {formatCurrency(
+                            draft.discountType === "amount"
+                              ? draft.discount
+                              : draft.subtotal * (draft.discount / 100),
+                            currency,
+                          )}
                         </span>
                       </div>
                     )}
                     <div className="border-t border-slate-200 pt-1 flex justify-between font-bold">
                       <span>Total:</span>
                       <span className="text-blue-600">
-                        ${draft.total.toFixed(2)}
+                        {formatCurrency(draft.total, currency)}
                       </span>
                     </div>
                   </div>

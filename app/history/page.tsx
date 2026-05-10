@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/provider/auth-provider";
+import { formatCurrency } from "@/lib/format-currency";
 import { POSLayout } from "@/components/pos-layout";
 import { Button } from "@/components/ui/button";
 import { OrderDetailsDialog } from "@/components/order-details-dialog";
 import {
-  getCompletedOrders,
   getTodaySalesData,
   getTopProducts,
   getOrderHistory,
-} from "@/lib/mock-api";
+} from "@/services/history-service";
 import type { CompletedOrder, Product, OrderDraft } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
-  BarChart,
-  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -34,7 +32,7 @@ interface SalesData {
 }
 
 export default function HistoryPage() {
-  const { user } = useAuth();
+  const { user, currency } = useAuth();
   const [orders, setOrders] = useState<CompletedOrder[]>([]);
   const [salesData, setSalesData] = useState<SalesData | null>(null);
   const [topProducts, setTopProducts] = useState<
@@ -51,7 +49,7 @@ export default function HistoryPage() {
       setIsLoading(true);
       const [ordersData, todaySales, topProds] = await Promise.all([
         getOrderHistory(),
-        getTodaySalesData(),
+        getTodaySalesData(user?.id),
         getTopProducts(),
       ]);
       setOrders(ordersData);
@@ -60,7 +58,7 @@ export default function HistoryPage() {
       setIsLoading(false);
     };
     loadData();
-  }, []);
+  }, [user?.id]);
 
   const chartData = orders
     .slice()
@@ -134,7 +132,7 @@ export default function HistoryPage() {
                     Total Sales
                   </p>
                   <p className="text-3xl font-bold text-slate-900 mt-2">
-                    ${salesData.totalSales.toFixed(2)}
+                    {formatCurrency(salesData.totalSales, currency)}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
@@ -151,7 +149,7 @@ export default function HistoryPage() {
                     Total Tax
                   </p>
                   <p className="text-3xl font-bold text-slate-900 mt-2">
-                    ${salesData.totalTax.toFixed(2)}
+                    {formatCurrency(salesData.totalTax, currency)}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-amber-100 rounded-lg flex items-center justify-center">
@@ -168,7 +166,7 @@ export default function HistoryPage() {
                     Discounts Given
                   </p>
                   <p className="text-3xl font-bold text-slate-900 mt-2">
-                    ${salesData.totalDiscount.toFixed(2)}
+                    {formatCurrency(salesData.totalDiscount, currency)}
                   </p>
                 </div>
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
@@ -309,7 +307,7 @@ export default function HistoryPage() {
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-between gap-3">
                           <span className="font-bold text-slate-900 text-lg">
-                            ${order.total.toFixed(2)}
+                            {formatCurrency(order.total, currency)}
                           </span>
                           <Button
                             onClick={() => {

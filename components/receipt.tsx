@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Printer } from "lucide-react";
 import type { CartItem } from "@/lib/types";
 import { useReactToPrint } from "react-to-print";
+import { useAuth } from "@/provider/auth-provider";
+import { formatCurrency } from "@/lib/format-currency";
 
 interface ReceiptProps {
   items: CartItem[];
@@ -35,6 +37,7 @@ export function Receipt({
   paymentMethod,
   timestamp,
 }: ReceiptProps) {
+  const { currency } = useAuth();
   const printRef = useRef<HTMLDivElement>(null);
 
   const discountAmount =
@@ -52,7 +55,7 @@ export function Receipt({
       >
         {/* Header */}
         <div className="text-center border-b border-slate-300 pb-4 mb-4">
-          <h1 className="text-lg font-bold">COFFEE CORNER</h1>
+          <h1 className="text-lg font-bold">EBTABO</h1>
           <p className="text-xs text-slate-600">Point of Sale Receipt</p>
         </div>
 
@@ -82,11 +85,11 @@ export function Receipt({
               <div className="col-span-1">
                 <div>{item.name}</div>
                 <div className="text-slate-600">
-                  ${item.price.toFixed(2)} ea
+                  {formatCurrency(item.price, currency)} ea
                 </div>
               </div>
               <div className="col-span-1 text-right font-bold">
-                ${item.subtotal.toFixed(2)}
+                {formatCurrency(item.subtotal, currency)}
               </div>
             </div>
           ))}
@@ -96,21 +99,21 @@ export function Receipt({
         <div className="space-y-1 mb-4 pb-4 border-b border-slate-300 text-xs">
           <div className="flex justify-between">
             <span>Subtotal:</span>
-            <span>${subtotal.toFixed(2)}</span>
+            <span>{formatCurrency(subtotal, currency)}</span>
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-red-600">
               <span>Discount:</span>
-              <span>-${discountAmount.toFixed(2)}</span>
+              <span>-{formatCurrency(discountAmount, currency)}</span>
             </div>
           )}
           <div className="flex justify-between">
             <span>Tax:</span>
-            <span>${tax.toFixed(2)}</span>
+            <span>{formatCurrency(tax, currency)}</span>
           </div>
           <div className="flex justify-between font-bold text-sm">
             <span>Total:</span>
-            <span>${total.toFixed(2)}</span>
+            <span>{formatCurrency(total, currency)}</span>
           </div>
         </div>
 

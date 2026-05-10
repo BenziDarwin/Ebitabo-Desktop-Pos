@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
-import { AuthProvider } from "@/lib/context/auth-context";
-import { POSProvider } from "@/lib/context/pos-context";
+import { AppProviders } from "@/provider/app-providers";
+import { appTheme } from "@/themes";
 import "./globals.css";
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
-
 export const metadata: Metadata = {
-  title: "Coffee Corner POS",
+  title: "Ebtabo POS",
   description: "Modern Point of Sale System",
   generator: "v0.app",
   icons: {
@@ -31,18 +27,27 @@ export const metadata: Metadata = {
   },
 };
 
+const shouldEnableVercelAnalytics =
+  process.env.NODE_ENV === "production" &&
+  process.env.NEXT_PUBLIC_ENABLE_VERCEL_ANALYTICS === "true";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="bg-background">
-      <body className="font-sans antialiased">
-        <AuthProvider>
-          <POSProvider>{children}</POSProvider>
-        </AuthProvider>
-        {process.env.NODE_ENV === "production" && <Analytics />}
+    <html
+      lang="en"
+      className={`bg-background ${appTheme.classes}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <style id="app-theme-tokens">{appTheme.cssVariables}</style>
+      </head>
+      <body className="font-sans antialiased" suppressHydrationWarning>
+        <AppProviders>{children}</AppProviders>
+        {shouldEnableVercelAnalytics && <Analytics />}
       </body>
     </html>
   );

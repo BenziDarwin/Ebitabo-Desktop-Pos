@@ -1,8 +1,10 @@
 "use client";
 
-import { usePOS } from "@/lib/context/pos-context";
+import { usePOS } from "@/provider/pos-provider";
+import { useAuth } from "@/provider/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { formatCurrency, getCurrencyMarker } from "@/lib/format-currency";
 import { ShoppingCart, Trash2, Plus, Minus } from "lucide-react";
 
 interface CartSummaryProps {
@@ -16,10 +18,12 @@ export function CartSummary({
   onSaveDraft,
   checkoutDisabled = false,
 }: CartSummaryProps) {
+  const { currency } = useAuth();
   const {
     cart,
     removeFromCart,
     updateCartItem,
+    updateCartItemPrice,
     cartSubtotal,
     cartTax,
     cartTotal,
@@ -35,6 +39,11 @@ export function CartSummary({
 
   const toggleDiscountType = () => {
     setDiscount(discount, discountType === "amount" ? "percent" : "amount");
+  };
+
+  const handleUnitPriceChange = (itemId: string, rawValue: string) => {
+    const parsed = parseFloat(rawValue);
+    updateCartItemPrice(itemId, Number.isFinite(parsed) ? parsed : 0);
   };
 
   return (
@@ -65,9 +74,21 @@ export function CartSummary({
                     <h4 className="font-semibold text-sm text-slate-900">
                       {item.name}
                     </h4>
-                    <p className="text-xs text-slate-500">
-                      ${item.price.toFixed(2)} each
-                    </p>
+                    <div className="mt-1">
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">
+                        Unit Price
+                      </label>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        value={item.price}
+                        onChange={(e) =>
+                          handleUnitPriceChange(item.id, e.target.value)
+                        }
+                        className="h-8 w-28 text-sm"
+                      />
+                    </div>
                   </div>
                   <Button
                     onClick={() => removeFromCart(item.id)}
@@ -109,7 +130,7 @@ export function CartSummary({
                     </Button>
                   </div>
                   <span className="font-semibold text-slate-900">
-                    ${item.subtotal.toFixed(2)}
+                    {formatCurrency(item.subtotal, currency)}
                   </span>
                 </div>
               </div>
@@ -123,7 +144,7 @@ export function CartSummary({
         {/* Subtotal */}
         <div className="flex justify-between text-sm text-slate-600">
           <span>Subtotal</span>
-          <span>${cartSubtotal.toFixed(2)}</span>
+          <span>{formatCurrency(cartSubtotal, currency)}</span>
         </div>
 
         {/* Discount */}
@@ -143,7 +164,7 @@ export function CartSummary({
               className="px-3"
               size="sm"
             >
-              {discountType === "amount" ? "$" : "%"}
+              {discountType === "amount" ? getCurrencyMarker(currency) : "%"}
             </Button>
           </div>
         </div>
@@ -151,7 +172,7 @@ export function CartSummary({
         {/* Tax */}
         <div className="flex justify-between text-sm text-slate-600">
           <span>Tax</span>
-          <span>${cartTax.toFixed(2)}</span>
+          <span>{formatCurrency(cartTax, currency)}</span>
         </div>
 
         {/* Total */}
@@ -159,7 +180,7 @@ export function CartSummary({
           <div className="flex justify-between items-center">
             <span className="text-lg font-bold text-slate-900">Total</span>
             <span className="text-2xl font-bold text-blue-600">
-              ${cartTotal.toFixed(2)}
+              {formatCurrency(cartTotal, currency)}
             </span>
           </div>
         </div>
@@ -179,7 +200,7 @@ export function CartSummary({
             disabled={cart.length === 0 || checkoutDisabled}
             className="h-10 bg-green-600 hover:bg-green-700"
           >
-            Checkout
+            Create Sale
           </Button>
         </div>
       </div>

@@ -36,6 +36,56 @@ function writeJson(res, statusCode, body) {
   res.end(JSON.stringify(body));
 }
 
+function getHeaderValue(value) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
+function normalizeProxyTarget(target) {
+  if (!target || typeof target !== "string") return "";
+  const trimmed = target.trim();
+  if (!trimmed) return "";
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed;
+  }
+  return `https://${trimmed}`;
+}
+
+function sanitizeForwardHeaders(rawHeaders, upstreamHost, originalHost) {
+  const headers = { ...rawHeaders };
+
+  const hopByHopHeaders = [
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "proxy-connection",
+  ];
+
+  for (const header of hopByHopHeaders) {
+    delete headers[header];
+  }
+
+  // These headers can trigger strict upstream policy checks for local desktop origins.
+  delete headers.origin;
+  delete headers.referer;
+
+  // Client target hint is consumed by the bridge and should not be forwarded upstream.
+  delete headers["x-ebitabo-client-url"];
+
+  headers.host = upstreamHost;
+  headers["x-forwarded-host"] = originalHost || "";
+  headers["x-forwarded-proto"] = "http";
+
+  return headers;
+}
+
 function safeJoin(rootDir, requestPath) {
   const relativePath = path
     .normalize(requestPath)
@@ -96,7 +146,17 @@ async function serveStatic(req, res, staticDir) {
 }
 
 function proxyToBackend(req, res, apiProxyTarget) {
-  if (!apiProxyTarget) {
+  const requestUrl = new URL(req.url || "/", "http://127.0.0.1");
+  const queryTarget = normalizeProxyTarget(
+    requestUrl.searchParams.get("target"),
+  );
+  const headerTarget = normalizeProxyTarget(
+    getHeaderValue(req.headers["x-ebitabo-client-url"]),
+  );
+  const resolvedTarget =
+    headerTarget || queryTarget || normalizeProxyTarget(apiProxyTarget);
+
+  if (!resolvedTarget) {
     writeJson(res, 503, {
       error: "API proxy target is not configured",
       hint: "Set EBITABO_API_PROXY_TARGET to enable /api forwarding.",
@@ -104,17 +164,27 @@ function proxyToBackend(req, res, apiProxyTarget) {
     return;
   }
 
-  const requestUrl = new URL(req.url || "/", "http://127.0.0.1");
+  const upstreamQuery = new URLSearchParams(requestUrl.searchParams);
+  upstreamQuery.delete("target");
+  const upstreamSearch = upstreamQuery.toString();
+
+  const forwardedPath =
+    requestUrl.pathname === "/api"
+      ? "/"
+      : requestUrl.pathname.replace(/^\/api(?=\/)/, "");
+  const normalizedForwardedPath =
+    forwardedPath === "/ebtabo_api" ? "/ebtabo_api/" : forwardedPath;
   const upstreamUrl = new URL(
-    `${requestUrl.pathname}${requestUrl.search}`,
-    apiProxyTarget,
+    `${normalizedForwardedPath}${upstreamSearch ? `?${upstreamSearch}` : ""}`,
+    resolvedTarget,
   );
   const transport = upstreamUrl.protocol === "https:" ? https : http;
 
-  const headers = { ...req.headers };
-  headers.host = upstreamUrl.host;
-  headers["x-forwarded-host"] = req.headers.host || "";
-  headers["x-forwarded-proto"] = "http";
+  const headers = sanitizeForwardHeaders(
+    req.headers,
+    upstreamUrl.host,
+    req.headers.host,
+  );
 
   const upstreamReq = transport.request(
     {
@@ -133,10 +203,17 @@ function proxyToBackend(req, res, apiProxyTarget) {
   );
 
   upstreamReq.on("error", (error) => {
+    console.error("Desktop bridge upstream request failed", {
+      message: error.message,
+      code: error.code,
+      target: resolvedTarget,
+      path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
+    });
     writeJson(res, 502, {
       error: "Failed to reach API upstream",
       details: error.message,
-      target: apiProxyTarget,
+      code: error.code || null,
+      target: resolvedTarget,
     });
   });
 

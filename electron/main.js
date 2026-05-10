@@ -5,7 +5,7 @@ const { startDesktopBridge } = require("./desktop-bridge");
 const APP_NAME = "Ebitabo POS";
 const APP_ID = "com.ebitabo.desktop";
 const isDev = process.env.NODE_ENV === "development";
-const apiProxyTarget = process.env.EBITABO_API_PROXY_TARGET;
+const apiProxyTarget = (process.env.EBITABO_API_PROXY_TARGET || "").trim();
 
 let mainWindow;
 let desktopBridge;
