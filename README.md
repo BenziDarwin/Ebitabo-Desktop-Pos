@@ -129,6 +129,29 @@ Use one of:
 - enable Windows Developer Mode, or
 - run terminal as Administrator.
 
+### Windows setup fails with `Extract: error writing to file Uninstall Ebitabo POS.exe`
+
+This usually means Windows cannot replace files in the existing install folder.
+
+Try this in order:
+
+1. Close the app fully (including background process) from Task Manager (`EbitaboPOS.exe`).
+2. Run the new installer again and choose **Install for me only (Current User)**.
+3. Keep the default install path under your user profile (avoid `Program Files` unless running as admin).
+4. If reinstalling after a failed update, uninstall the old app first from **Installed apps**, then run setup again.
+
+If you still hit the same error, restart Windows and run the installer before launching the app again.
+
+### Installed app still shows default Electron icon
+
+For Windows, the executable icon is embedded only when Electron Builder can edit the `.exe`.
+
+- Keep `build.win.signAndEditExecutable` set to `true`.
+- Build from a terminal with enough privileges to avoid `winCodeSign` extraction errors:
+  - enable Windows Developer Mode, or
+  - run terminal as Administrator.
+- Uninstall old builds and reinstall the newest setup to refresh cached shortcuts/icons.
+
 ### Lint errors for `require()` in Electron files
 
 `eslint.config.mjs` includes an override for `electron/**/*.js` and `pre-commit.js` to allow CommonJS `require()` usage in Node/Electron scripts.

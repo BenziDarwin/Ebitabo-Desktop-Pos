@@ -244,9 +244,34 @@ function startDesktopBridge({ staticDir, apiProxyTarget, host = "127.0.0.1" }) {
       }
 
       resolve({
-        close: () =>
+        close: (timeoutMs = 4000) =>
           new Promise((closeResolve) => {
-            server.close(() => closeResolve());
+            let settled = false;
+
+            const finish = () => {
+              if (settled) return;
+              settled = true;
+              closeResolve();
+            };
+
+            const timeout = setTimeout(() => {
+              if (typeof server.closeIdleConnections === "function") {
+                server.closeIdleConnections();
+              }
+              if (typeof server.closeAllConnections === "function") {
+                server.closeAllConnections();
+              }
+              finish();
+            }, timeoutMs);
+
+            if (typeof timeout.unref === "function") {
+              timeout.unref();
+            }
+
+            server.close(() => {
+              clearTimeout(timeout);
+              finish();
+            });
           }),
         url: `http://${host}:${address.port}`,
       });

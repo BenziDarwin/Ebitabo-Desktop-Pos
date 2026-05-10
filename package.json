@@ -1,6 +1,6 @@
 {
   "name": "ebitabo_web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
@@ -89,7 +89,8 @@
   },
   "build": {
     "appId": "com.ebitabo.desktop",
-    "productName": "Ebitabo POS",
+    "productName": "Ebtabo POS",
+    "executableName": "EbtaboPOS",
     "directories": {
       "output": "dist"
     },
@@ -108,7 +109,16 @@
     "win": {
       "target": "nsis",
       "icon": "icon.ico",
-      "signAndEditExecutable": false
+      "signAndEditExecutable": true
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "selectPerMachineByDefault": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "runAfterFinish": false,
+      "uninstallDisplayName": "Ebitabo POS"
     }
   }
 }

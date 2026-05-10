@@ -9,6 +9,7 @@ const apiProxyTarget = (process.env.EBITABO_API_PROXY_TARGET || "").trim();
 
 let mainWindow;
 let desktopBridge;
+let isQuitting = false;
 
 app.setName(APP_NAME);
 if (process.platform === "win32") {
@@ -45,14 +46,31 @@ async function createWindow() {
   }
 }
 
+async function closeDesktopBridge() {
+  if (!desktopBridge) return;
+
+  try {
+    await desktopBridge.close();
+  } catch (error) {
+    console.error("Failed to close desktop bridge cleanly", error);
+  } finally {
+    desktopBridge = undefined;
+  }
+}
+
 app.whenReady().then(createWindow);
 
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", async () => {
-  if (desktopBridge) {
-    await desktopBridge.close();
-  }
+app.on("before-quit", (event) => {
+  if (isQuitting || !desktopBridge) return;
+
+  event.preventDefault();
+  isQuitting = true;
+
+  void closeDesktopBridge().finally(() => {
+    app.quit();
+  });
 });
