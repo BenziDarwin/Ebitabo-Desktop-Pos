@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
+import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
 function StyledField({
@@ -19,6 +20,7 @@ function StyledField({
   placeholder,
   onChange,
   disabled,
+  rightAdornment,
 }: {
   label: string;
   value: string;
@@ -26,6 +28,7 @@ function StyledField({
   placeholder?: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  rightAdornment?: React.ReactNode;
 }) {
   return (
     <div className="relative border border-[#c1bbbb] bg-white px-5 py-3">
@@ -41,8 +44,15 @@ function StyledField({
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled}
-        className="h-7 border-0 bg-transparent px-0 py-0 text-base text-[#3751fe] shadow-none focus-visible:ring-0"
+        className={`h-7 border-0 bg-transparent px-0 py-0 text-base text-[#3751fe] shadow-none focus-visible:ring-0 ${
+          rightAdornment ? "pr-10" : ""
+        }`}
       />
+      {rightAdornment ? (
+        <div className="absolute bottom-3.5 right-4 flex items-center">
+          {rightAdornment}
+        </div>
+      ) : null}
       <span className="absolute inset-y-0 left-0 w-1 bg-[#3751fe]" />
     </div>
   );
@@ -59,6 +69,7 @@ export default function LoginPage() {
   );
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
 
@@ -140,7 +151,7 @@ export default function LoginPage() {
 
             <StyledField
               label="Password"
-              type="password"
+              type={isPasswordVisible ? "text" : "password"}
               value={password}
               onChange={(value) => {
                 setPassword(value);
@@ -148,6 +159,24 @@ export default function LoginPage() {
               }}
               placeholder="Enter your password"
               disabled={isLoading}
+              rightAdornment={
+                <button
+                  type="button"
+                  onClick={() => setIsPasswordVisible((previous) => !previous)}
+                  aria-label={
+                    isPasswordVisible ? "Hide password" : "Show password"
+                  }
+                  aria-pressed={isPasswordVisible}
+                  disabled={isLoading}
+                  className="text-slate-500 transition-colors hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isPasswordVisible ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              }
             />
 
             <StyledField

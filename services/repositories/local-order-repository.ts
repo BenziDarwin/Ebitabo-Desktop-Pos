@@ -1,5 +1,8 @@
 import type { CompletedOrder, OrderDraft } from "@/core/entities";
-import type { OrderRepository } from "@/core/repositories";
+import type {
+  CompleteOrderOptions,
+  OrderRepository,
+} from "@/core/repositories";
 import {
   readLocalProducts,
   writeLocalProducts,
@@ -29,15 +32,64 @@ export class LocalOrderRepository implements OrderRepository {
   async completeOrder(
     order: OrderDraft,
     userId: string,
+    options?: CompleteOrderOptions,
   ): Promise<CompletedOrder> {
+    const syncStatus = options?.sync?.status ?? "synced";
+    const syncAmountPaid = Number(options?.sync?.amountPaid ?? order.total);
+    const fallbackAmountPaid =
+      Number.isFinite(syncAmountPaid) && syncAmountPaid >= 0
+        ? syncAmountPaid
+        : order.total;
+    const resolvedSyncedAt =
+      syncStatus === "synced"
+        ? options?.sync?.syncedAt
+          ? new Date(options.sync.syncedAt)
+          : new Date()
+        : null;
+    const syncCurrencyId = Number(options?.sync?.currencyId ?? 0);
+    const resolvedCurrencyId = Number.isFinite(syncCurrencyId)
+      ? syncCurrencyId
+      : 0;
+    const resolvedPayments =
+      options?.payments && options.payments.length > 0
+        ? options.payments.map((payment) => ({ ...payment }))
+        : [
+            {
+              method: options?.sync?.paymentMethod ?? "Cash",
+              amount: fallbackAmountPaid,
+              date: new Date().toISOString(),
+            },
+          ];
+    const resolvedChange =
+      typeof options?.change === "number"
+        ? options.change
+        : Math.max(0, fallbackAmountPaid - order.total);
+
     const completedOrder: CompletedOrder = {
       ...order,
       items: order.items.map((item) => ({ ...item })),
       client: order.client ? { ...order.client } : undefined,
       userId,
-      payments: [],
-      change: 0,
+      payments: resolvedPayments,
+      change: resolvedChange,
       completedAt: new Date(),
+      sync: {
+        status: syncStatus,
+        remoteSaleId:
+          typeof options?.sync?.remoteSaleId === "number"
+            ? options.sync.remoteSaleId
+            : null,
+        syncedAt: resolvedSyncedAt,
+        lastSyncError:
+          options?.sync?.lastSyncError ??
+          (syncStatus === "pending" ? "Pending sync" : null),
+        paymentMethod: options?.sync?.paymentMethod ?? "Cash",
+        amountPaid: fallbackAmountPaid,
+        currencyId: resolvedCurrencyId,
+        businessAccountType: options?.sync?.businessAccountType ?? null,
+        businessUserId: String(options?.sync?.businessUserId ?? userId),
+        createdBy: options?.sync?.createdBy,
+      },
     };
 
     const records = readLocalSalesRecords();

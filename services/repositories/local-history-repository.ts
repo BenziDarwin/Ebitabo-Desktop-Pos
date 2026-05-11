@@ -16,6 +16,10 @@ function cloneCompletedOrder(order: CompletedOrder): CompletedOrder {
     items: order.items.map((item) => ({ ...item })),
     payments: order.payments.map((payment) => ({ ...payment })),
     client: order.client ? { ...order.client } : undefined,
+    sync: {
+      ...order.sync,
+      syncedAt: order.sync.syncedAt ? new Date(order.sync.syncedAt) : null,
+    },
     createdAt: new Date(order.createdAt),
     updatedAt: new Date(order.updatedAt),
     completedAt: new Date(order.completedAt),

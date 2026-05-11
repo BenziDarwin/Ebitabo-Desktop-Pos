@@ -5,7 +5,13 @@ import { useAuth } from "@/provider/auth-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatCurrency, getCurrencyMarker } from "@/lib/format-currency";
+import {
+  clampCartItemQuantityToStock,
+  getLocalProductStockMap,
+  resolveMaxAllowedQuantity,
+} from "@/services/cart-stock-service";
 import { ShoppingCart, Trash2, Plus, Minus } from "lucide-react";
+import { toast } from "sonner";
 
 interface CartSummaryProps {
   onCheckout: () => void;
@@ -44,6 +50,36 @@ export function CartSummary({
   const handleUnitPriceChange = (itemId: string, rawValue: string) => {
     const parsed = parseFloat(rawValue);
     updateCartItemPrice(itemId, Number.isFinite(parsed) ? parsed : 0);
+  };
+
+  const stockByProductId = getLocalProductStockMap();
+
+  const normalizeWholeQuantity = (rawValue: string): number => {
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) return 1;
+    return Math.max(1, Math.floor(parsed));
+  };
+
+  const updateQuantityWithStockCheck = (
+    itemId: string,
+    nextQuantity: number,
+  ) => {
+    const item = cart.find((entry) => entry.id === itemId);
+    if (!item) return;
+
+    const clampedQuantity = clampCartItemQuantityToStock(
+      item,
+      nextQuantity,
+      stockByProductId,
+    );
+    updateCartItem(itemId, clampedQuantity);
+
+    const maxAllowed = resolveMaxAllowedQuantity(item, stockByProductId);
+    if (maxAllowed !== null && nextQuantity > maxAllowed) {
+      toast.error(
+        `Only ${maxAllowed} unit${maxAllowed === 1 ? "" : "s"} available for ${item.name}.`,
+      );
+    }
   };
 
   return (
@@ -104,7 +140,10 @@ export function CartSummary({
                   <div className="flex items-center gap-2 bg-white rounded border border-slate-200">
                     <Button
                       onClick={() =>
-                        updateCartItem(item.id, Math.max(1, item.quantity - 1))
+                        updateQuantityWithStockCheck(
+                          item.id,
+                          Math.max(1, item.quantity - 1),
+                        )
                       }
                       variant="ghost"
                       size="sm"
@@ -114,14 +153,23 @@ export function CartSummary({
                     </Button>
                     <input
                       type="number"
+                      min={1}
+                      step={1}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={item.quantity}
                       onChange={(e) =>
-                        updateCartItem(item.id, parseInt(e.target.value) || 1)
+                        updateQuantityWithStockCheck(
+                          item.id,
+                          normalizeWholeQuantity(e.target.value),
+                        )
                       }
                       className="w-10 text-center text-sm font-semibold border-0 focus:ring-0"
                     />
                     <Button
-                      onClick={() => updateCartItem(item.id, item.quantity + 1)}
+                      onClick={() =>
+                        updateQuantityWithStockCheck(item.id, item.quantity + 1)
+                      }
                       variant="ghost"
                       size="sm"
                       className="h-8 w-8 p-0"

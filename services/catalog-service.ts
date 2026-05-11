@@ -1,6 +1,7 @@
 import type { Product, Service } from "@/core/entities";
 import { getProductsUseCase, getServicesUseCase } from "@/services/container";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import { Storage } from "@/lib/storage";
 import {
   readLocalProducts,
@@ -26,7 +27,7 @@ function isSalesBusinessAccount(): boolean {
     STORAGE_KEYS.businessDetails,
     null,
   );
-  return business?.account_type?.toLowerCase() === "sales business";
+  return isSalesBusinessAccountType(business?.account_type);
 }
 
 function searchWithinProducts(products: Product[], query: string): Product[] {
@@ -45,6 +46,7 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
   console.info(`${LOG_PREFIX} sync started`);
   const apiKey = Storage.getItem(STORAGE_KEYS.apiKey);
   const clientUrl = Storage.getItem(STORAGE_KEYS.clientUrl);
+  const isSalesBusiness = isSalesBusinessAccount();
   const previousProducts = readLocalProducts();
   const previousServices = readLocalServices();
   console.info(`${LOG_PREFIX} local cache before sync`, {
@@ -52,6 +54,7 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
     services: previousServices.length,
     hasApiKey: Boolean(apiKey),
     hasClientUrl: Boolean(clientUrl),
+    isSalesBusiness,
   });
 
   // Avoid replacing local catalog with empty data when session keys are not ready yet.
@@ -64,19 +67,21 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
     };
   }
 
-  const [cloudProducts, cloudServices] = await Promise.all([
-    getProductsUseCase.execute().catch((error) => {
-      console.error(`${LOG_PREFIX} cloud products fetch failed`, error);
-      return [];
-    }),
-    getServicesUseCase.execute().catch((error) => {
-      console.error(`${LOG_PREFIX} cloud services fetch failed`, error);
-      return [];
-    }),
-  ]);
+  const cloudProducts = await getProductsUseCase.execute().catch((error) => {
+    console.error(`${LOG_PREFIX} cloud products fetch failed`, error);
+    return [];
+  });
+
+  const cloudServices = isSalesBusiness
+    ? []
+    : await getServicesUseCase.execute().catch((error) => {
+        console.error(`${LOG_PREFIX} cloud services fetch failed`, error);
+        return [];
+      });
   console.info(`${LOG_PREFIX} cloud fetch completed`, {
     cloudProducts: cloudProducts.length,
     cloudServices: cloudServices.length,
+    isSalesBusiness,
   });
 
   if (cloudProducts.length > 0 || previousProducts.length === 0) {
@@ -89,7 +94,7 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
     console.warn(`${LOG_PREFIX} product write skipped to avoid clearing cache`);
   }
 
-  if (isSalesBusinessAccount()) {
+  if (isSalesBusiness) {
     console.info(
       `${LOG_PREFIX} account type is Sales Business; clearing services`,
     );

@@ -8,6 +8,8 @@ export const STORAGE_KEYS = {
   user: "pos_user",
   catalogProducts: "catalog_products",
   catalogServices: "catalog_services",
+  clientsProducts: "clients_products",
+  clientsServices: "clients_services",
   catalogLastSyncedAt: "catalog_last_synced_at",
   cartState: "cart_state",
   orderDrafts: "order_drafts",

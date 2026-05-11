@@ -11,9 +11,32 @@ export interface CartItem {
   subtotal: number;
 }
 
+export type SalePaymentMethod =
+  | "Cash"
+  | "Mobile Money"
+  | "Bank Transfer"
+  | "Debit/Credit Card"
+  | "Advance";
+
 export interface Payment {
-  method: "cash" | "card" | "check" | "transfer";
+  method: SalePaymentMethod;
   amount: number;
+  date?: string;
+}
+
+export type SaleSyncStatus = "pending" | "synced";
+
+export interface SaleSyncMetadata {
+  status: SaleSyncStatus;
+  remoteSaleId: number | null;
+  syncedAt: Date | null;
+  lastSyncError: string | null;
+  paymentMethod: SalePaymentMethod;
+  amountPaid: number;
+  currencyId: number;
+  businessAccountType?: string | null;
+  businessUserId: string;
+  createdBy?: string;
 }
 
 export interface OrderDraft {
@@ -35,6 +58,7 @@ export interface CompletedOrder extends OrderDraft {
   payments: Payment[];
   change: number;
   completedAt: Date;
+  sync: SaleSyncMetadata;
   receipt?: string;
 }
 

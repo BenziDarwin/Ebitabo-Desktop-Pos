@@ -37,9 +37,14 @@ function normalizeRecordCollection(raw: unknown): Record<string, unknown>[] {
     return [];
   }
 
-  const objectValues = Object.values(raw);
-  if (objectValues.length > 0 && objectValues.every(isRecord)) {
-    return objectValues as Record<string, unknown>[];
+  const entries = Object.entries(raw);
+  const objectEntries = entries.filter(([, value]) => isRecord(value));
+
+  if (objectEntries.length > 0) {
+    const hasIndexedKeys = objectEntries.some(([key]) => /^\d+$/.test(key));
+    if (hasIndexedKeys || objectEntries.length === entries.length) {
+      return objectEntries.map(([, value]) => value as Record<string, unknown>);
+    }
   }
 
   return [raw];

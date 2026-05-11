@@ -16,6 +16,10 @@ import { Trash2, Eye, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/format-currency";
+import {
+  findFirstInsufficientStock,
+  getLocalProductStockMap,
+} from "@/services/cart-stock-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
 
 export default function OrdersPage() {
@@ -49,8 +53,31 @@ export default function OrdersPage() {
 
   const handleAddItemsToDraft = (items: CartItem[]) => {
     if (selectedDraft) {
-      const subtotal = items.reduce((sum, item) => sum + item.subtotal, 0);
-      const tax = items.reduce(
+      const normalizedItems = items.map((item) => ({
+        ...item,
+        quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+      }));
+      const stockByProductId = getLocalProductStockMap();
+      const stockIssue = findFirstInsufficientStock(
+        normalizedItems,
+        stockByProductId,
+      );
+      if (stockIssue) {
+        toast.error(
+          `${stockIssue.itemName} exceeds stock. Available: ${stockIssue.available}, requested: ${stockIssue.requested}.`,
+        );
+        return;
+      }
+
+      const recalculatedItems = normalizedItems.map((item) => ({
+        ...item,
+        subtotal: item.price * item.quantity,
+      }));
+      const subtotal = recalculatedItems.reduce(
+        (sum, item) => sum + item.subtotal,
+        0,
+      );
+      const tax = recalculatedItems.reduce(
         (sum, item) => sum + item.subtotal * item.tax,
         0,
       );
@@ -60,7 +87,7 @@ export default function OrdersPage() {
           : subtotal * (selectedDraft.discount / 100);
       const updated: OrderDraft = {
         ...selectedDraft,
-        items,
+        items: recalculatedItems,
         subtotal,
         tax,
         total: subtotal + tax - discountAmount,
@@ -70,6 +97,14 @@ export default function OrdersPage() {
       setSelectedDraft(updated);
       toast.success("Order updated");
     }
+  };
+
+  const handleContinueEditingDraft = (draftId: string) => {
+    loadOrderDraft(draftId);
+    setShowDetails(false);
+    setSelectedDraft(null);
+    toast.success("Order loaded. Add more items from Sell.");
+    router.push("/sell");
   };
 
   const handleDeleteDraft = (draftId: string) => {
@@ -255,6 +290,7 @@ export default function OrdersPage() {
           setSelectedDraft(null);
         }}
         onAddItems={handleAddItemsToDraft}
+        onContinueEditing={handleContinueEditingDraft}
         showAddItems={true}
       />
 

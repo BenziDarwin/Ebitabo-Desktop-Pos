@@ -21,8 +21,11 @@ export const Storage = {
     if (!canUseStorage()) return;
     try {
       window.localStorage.setItem(key, value);
-    } catch {
-      // no-op to keep UI responsive even when storage is unavailable
+    } catch (error) {
+      console.warn("[Storage] Failed to persist key", {
+        key,
+        error,
+      });
     }
   },
 

@@ -7,7 +7,9 @@ import { completeOrder } from "@/services/order-service";
 import { syncCatalogFromCloud } from "@/services/catalog-service";
 import {
   createSaleFromCart,
+  extractRemoteSaleId,
   fetchBusinessClients,
+  getCachedBusinessClients,
   type SalePaymentMethod,
 } from "@/services/sales-service";
 import { POSLayout } from "@/components/pos-layout";
@@ -22,7 +24,32 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { formatCurrency, getCurrencyMarker } from "@/lib/format-currency";
+import {
+  findFirstInsufficientStock,
+  getLocalProductStockMap,
+} from "@/services/cart-stock-service";
+import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import type { Client, OrderDraft } from "@/lib/types";
 
@@ -50,12 +77,15 @@ export default function SellPage() {
     activeDraftId,
     orderDrafts,
     saveOrderDraft,
+    deleteOrderDraft,
     clearCart,
   } = usePOS();
 
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("Cash");
   const [amountPaid, setAmountPaid] = useState(0);
+  const amountPaidInputRef = useRef<HTMLInputElement | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientSearch, setClientSearch] = useState("");
   const [isLoadingClients, setIsLoadingClients] = useState(false);
@@ -132,17 +162,25 @@ export default function SellPage() {
       return;
     }
 
-    setIsLoadingClients(true);
+    const reconcileSelectedClient = (nextClients: Client[]) => {
+      if (!selectedClient) return;
+      const nextSelectedClient = nextClients.find(
+        (entry) => entry.id === selectedClient.id,
+      );
+      setSelectedClient(nextSelectedClient ?? null);
+    };
+
+    const cachedClients = getCachedBusinessClients(business.account_type);
+    if (cachedClients.length > 0) {
+      setClients(cachedClients);
+      reconcileSelectedClient(cachedClients);
+    }
+
+    setIsLoadingClients(cachedClients.length === 0);
     try {
       const fetchedClients = await fetchBusinessClients(business.account_type);
       setClients(fetchedClients);
-
-      if (selectedClient) {
-        const nextSelectedClient = fetchedClients.find(
-          (entry) => entry.id === selectedClient.id,
-        );
-        setSelectedClient(nextSelectedClient ?? null);
-      }
+      reconcileSelectedClient(fetchedClients);
     } catch (error) {
       console.error("Failed to load clients", error);
       toast.error("Failed to load clients for sale");
@@ -159,6 +197,18 @@ export default function SellPage() {
     );
   }, [clientSearch, clients]);
 
+  const availablePaymentMethods = useMemo(
+    () =>
+      PAYMENT_METHODS.filter((method) => {
+        if (method !== "Advance") return true;
+        return (selectedClient?.advancedAmount ?? 0) > 0;
+      }),
+    [selectedClient],
+  );
+  const resolvedPaymentMethod = availablePaymentMethods.includes(paymentMethod)
+    ? paymentMethod
+    : "Cash";
+
   const handleCheckout = () => {
     if (cart.length === 0) {
       toast.error("Cart is empty");
@@ -166,7 +216,18 @@ export default function SellPage() {
     }
     setAmountPaid(cartTotal);
     setShowPaymentDialog(true);
+    setClientSearch("");
     void loadClients();
+  };
+
+  const resolveLatestAmountPaid = (): number => {
+    const inputValue = amountPaidInputRef.current?.value;
+    const parsed = Number(
+      typeof inputValue === "string" && inputValue.trim() !== ""
+        ? inputValue
+        : amountPaid,
+    );
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
   };
 
   const handleCompletePayment = async () => {
@@ -180,13 +241,19 @@ export default function SellPage() {
       return;
     }
 
-    if (amountPaid < cartTotal) {
-      toast.error("Insufficient payment amount");
+    const stockIssue = findFirstInsufficientStock(
+      cart,
+      getLocalProductStockMap(),
+    );
+    if (stockIssue) {
+      toast.error(
+        `${stockIssue.itemName} exceeds stock. Available: ${stockIssue.available}, requested: ${stockIssue.requested}.`,
+      );
       return;
     }
 
     if (
-      paymentMethod === "Advance" &&
+      resolvedPaymentMethod === "Advance" &&
       (selectedClient.advancedAmount ?? 0) < cartTotal
     ) {
       toast.error("Client advance amount is not enough for this sale.");
@@ -199,30 +266,47 @@ export default function SellPage() {
       return;
     }
 
+    const resolvedAmountPaid = resolveLatestAmountPaid();
+    setAmountPaid(resolvedAmountPaid);
+
     const resolvedCurrencyId = Number(
       currency?.id ?? business.currency_id ?? 0,
     );
-    const change = amountPaid - cartTotal;
+    const balanceDue = Math.max(0, cartTotal - resolvedAmountPaid);
+    const change = Math.max(0, resolvedAmountPaid - cartTotal);
 
     setIsCreatingSale(true);
-    let remoteCreateFailed = false;
+    const isOffline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    let remoteCreateFailed = isOffline;
+    let remoteCreateError: string | null = isOffline
+      ? "No internet connection."
+      : null;
+    let remoteSaleId: number | null = null;
 
-    try {
-      await createSaleFromCart({
-        business,
-        cart,
-        client: selectedClient,
-        paymentMethod,
-        amountPaid,
-        currencyId: resolvedCurrencyId,
-        subtotal: cartSubtotal,
-        discount,
-        discountType,
-        createdBy: user?.name || user?.username,
-      });
-    } catch (error) {
-      remoteCreateFailed = true;
-      console.error("createSaleFromCart failed", error);
+    if (!isOffline) {
+      try {
+        const remoteResponse = await createSaleFromCart({
+          business,
+          cart,
+          client: selectedClient,
+          paymentMethod: resolvedPaymentMethod,
+          amountPaid: resolvedAmountPaid,
+          currencyId: resolvedCurrencyId,
+          subtotal: cartSubtotal,
+          discount,
+          discountType,
+          createdBy: user?.name || user?.username,
+        });
+        remoteSaleId = extractRemoteSaleId(remoteResponse);
+      } catch (error) {
+        remoteCreateFailed = true;
+        remoteCreateError =
+          error instanceof Error
+            ? error.message
+            : "Cloud create-sale failed. Please sync later.";
+        console.error("createSaleFromCart failed", error);
+      }
     }
 
     const checkoutDraft: OrderDraft = {
@@ -241,7 +325,28 @@ export default function SellPage() {
     };
 
     try {
-      await completeOrder(checkoutDraft, userId);
+      await completeOrder(checkoutDraft, userId, {
+        change,
+        payments: [
+          {
+            method: resolvedPaymentMethod,
+            amount: resolvedAmountPaid,
+            date: new Date().toISOString(),
+          },
+        ],
+        sync: {
+          status: remoteCreateFailed ? "pending" : "synced",
+          remoteSaleId,
+          syncedAt: remoteCreateFailed ? null : new Date(),
+          lastSyncError: remoteCreateFailed ? remoteCreateError : null,
+          paymentMethod: resolvedPaymentMethod,
+          amountPaid: resolvedAmountPaid,
+          currencyId: resolvedCurrencyId,
+          businessAccountType: business.account_type,
+          businessUserId: business.userId,
+          createdBy: user?.name || user?.username,
+        },
+      });
     } catch (error) {
       console.error("Failed to persist local sale", error);
       toast.error("Failed to save sale locally. Please try again.");
@@ -250,16 +355,25 @@ export default function SellPage() {
     }
 
     if (remoteCreateFailed) {
-      toast.warning(
-        "Sale saved locally, but cloud create-sale failed. Check network/API and sync again.",
-      );
+      toast.warning("Sale saved locally as pending. Sync it from History.");
     } else {
-      toast.success(
-        `Sale created successfully. Change: ${formatCurrency(change, currency)}`,
-      );
+      if (balanceDue > 0) {
+        toast.success(
+          `Sale created on credit. Balance due: ${formatCurrency(balanceDue, currency)}`,
+        );
+      } else {
+        toast.success(
+          `Sale created successfully. Change: ${formatCurrency(change, currency)}`,
+        );
+      }
+    }
+
+    if (activeDraftId) {
+      deleteOrderDraft(activeDraftId);
     }
 
     setShowPaymentDialog(false);
+    setIsClientPickerOpen(false);
     clearCart();
     setAmountPaid(0);
     setPaymentMethod("Cash");
@@ -318,188 +432,247 @@ export default function SellPage() {
       </div>
 
       {/* Payment Dialog */}
-      <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
+      <Dialog
+        open={showPaymentDialog}
+        onOpenChange={(open) => {
+          setShowPaymentDialog(open);
+          if (!open) {
+            setIsClientPickerOpen(false);
+            setClientSearch("");
+          }
+        }}
+      >
+        <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-hidden p-0">
+          <DialogHeader className="px-6 pt-6">
             <DialogTitle>Create Sale</DialogTitle>
             <DialogDescription>
               Total amount: {formatCurrency(cartTotal, currency)}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Client Selection */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Client
-              </label>
-              <Input
-                value={clientSearch}
-                onChange={(event) => setClientSearch(event.target.value)}
-                placeholder="Type to search clients..."
-                className="mb-2"
-              />
-              <div className="max-h-40 overflow-y-auto rounded-md border border-slate-200 bg-white">
-                {isLoadingClients ? (
-                  <p className="p-3 text-sm text-slate-500">
-                    Loading clients...
+          <div className="grid gap-4 overflow-y-auto px-6 pb-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+            <div className="space-y-4">
+              {/* Client Selection */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-2">
+                  Client
+                </label>
+                <Popover
+                  open={isClientPickerOpen}
+                  onOpenChange={setIsClientPickerOpen}
+                >
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isClientPickerOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      <span className="truncate">
+                        {selectedClient
+                          ? selectedClient.name
+                          : "Search and select client..."}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[var(--radix-popover-trigger-width)] p-0"
+                  >
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        value={clientSearch}
+                        onValueChange={setClientSearch}
+                        placeholder="Search clients..."
+                      />
+                      <CommandList>
+                        {isLoadingClients ? (
+                          <p className="p-3 text-sm text-slate-500">
+                            Loading clients...
+                          </p>
+                        ) : (
+                          <>
+                            <CommandEmpty>No clients found</CommandEmpty>
+                            <CommandGroup>
+                              {filteredClients.map((client) => {
+                                const isActive =
+                                  selectedClient?.id === client.id;
+                                return (
+                                  <CommandItem
+                                    key={client.id}
+                                    value={`${client.name} ${client.id}`}
+                                    onSelect={() => {
+                                      setSelectedClient(client);
+                                      setClientSearch("");
+                                      setIsClientPickerOpen(false);
+                                    }}
+                                  >
+                                    <Check
+                                      className={`mr-2 h-4 w-4 ${
+                                        isActive ? "opacity-100" : "opacity-0"
+                                      }`}
+                                    />
+                                    <div className="flex w-full items-center justify-between gap-2">
+                                      <span className="truncate">
+                                        {client.name}
+                                      </span>
+                                      {client.advancedAmount ? (
+                                        <span className="text-xs text-slate-500 shrink-0">
+                                          Adv:{" "}
+                                          {formatCurrency(
+                                            client.advancedAmount,
+                                            currency,
+                                          )}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </CommandItem>
+                                );
+                              })}
+                            </CommandGroup>
+                          </>
+                        )}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+                {selectedClient && (
+                  <p className="mt-2 text-xs text-green-700">
+                    Selected: {selectedClient.name}
                   </p>
-                ) : filteredClients.length === 0 ? (
-                  <p className="p-3 text-sm text-slate-500">No clients found</p>
-                ) : (
-                  filteredClients.map((client) => {
-                    const isActive = selectedClient?.id === client.id;
-                    return (
-                      <button
-                        key={client.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedClient(client);
-                          setClientSearch("");
-                        }}
-                        className={`w-full px-3 py-2 text-left text-sm transition-colors ${
-                          isActive
-                            ? "bg-blue-50 text-blue-700"
-                            : "text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="truncate">{client.name}</span>
-                          {client.advancedAmount ? (
-                            <span className="text-xs text-slate-500">
-                              Adv:{" "}
-                              {formatCurrency(client.advancedAmount, currency)}
-                            </span>
-                          ) : null}
-                        </div>
-                      </button>
-                    );
-                  })
                 )}
               </div>
-              {selectedClient && (
-                <p className="mt-2 text-xs text-green-700">
-                  Selected: {selectedClient.name}
-                </p>
-              )}
-            </div>
 
-            {/* Payment Method */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Payment Method
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {PAYMENT_METHODS.filter((method) => {
-                  if (method !== "Advance") return true;
-                  return (selectedClient?.advancedAmount ?? 0) > 0;
-                }).map((method) => (
-                  <button
-                    key={method}
-                    onClick={() => setPaymentMethod(method)}
-                    className={`p-3 rounded-lg border-2 font-medium capitalize transition-colors ${
-                      paymentMethod === method
-                        ? "border-blue-600 bg-blue-50 text-blue-600"
-                        : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                    }`}
-                  >
-                    {method}
-                  </button>
-                ))}
-              </div>
-              {paymentMethod === "Advance" && selectedClient && (
-                <p className="mt-2 text-xs text-blue-700">
-                  Advance available:{" "}
-                  {formatCurrency(selectedClient.advancedAmount ?? 0, currency)}
-                </p>
-              )}
-            </div>
-
-            {/* Amount Paid */}
-            <div>
-              <label className="text-sm font-medium text-slate-700 block mb-2">
-                Amount Paid
-              </label>
-              <Input
-                type="number"
-                value={amountPaid || ""}
-                onChange={(e) => setAmountPaid(parseFloat(e.target.value) || 0)}
-                placeholder="0.00"
-                className="text-lg"
-              />
-            </div>
-
-            {/* Order Summary */}
-            <div className="bg-slate-50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Subtotal:</span>
-                <span className="font-medium">
-                  {formatCurrency(cartSubtotal, currency)}
-                </span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-600">Tax:</span>
-                <span className="font-medium">
-                  {formatCurrency(cartTax, currency)}
-                </span>
-              </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-sm text-red-600">
-                  <span>
-                    Discount (
-                    {discountType === "percent"
-                      ? "%"
-                      : getCurrencyMarker(currency)}
-                    ):
-                  </span>
-                  <span className="font-medium">
-                    -
+              {/* Payment Method */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-2">
+                  Payment Method
+                </label>
+                <Select
+                  value={resolvedPaymentMethod}
+                  onValueChange={(value) =>
+                    setPaymentMethod(value as SalePaymentMethod)
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select payment method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availablePaymentMethods.map((method) => (
+                      <SelectItem key={method} value={method}>
+                        {method}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {resolvedPaymentMethod === "Advance" && selectedClient && (
+                  <p className="mt-2 text-xs text-blue-700">
+                    Advance available:{" "}
                     {formatCurrency(
-                      discountType === "amount"
-                        ? discount
-                        : cartSubtotal * (discount / 100),
+                      selectedClient.advancedAmount ?? 0,
                       currency,
                     )}
-                  </span>
-                </div>
-              )}
-              <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">
-                <span>Total:</span>
-                <span className="text-blue-600">
-                  {formatCurrency(cartTotal, currency)}
-                </span>
+                  </p>
+                )}
               </div>
 
-              {amountPaid >= cartTotal && (
-                <div className="flex justify-between text-sm bg-green-50 p-2 rounded border border-green-200">
-                  <span className="text-green-700">Change:</span>
-                  <span className="font-semibold text-green-700">
-                    {formatCurrency(amountPaid - cartTotal, currency)}
-                  </span>
-                </div>
-              )}
+              {/* Amount Paid */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-2">
+                  Amount Paid
+                </label>
+                <Input
+                  ref={amountPaidInputRef}
+                  type="number"
+                  value={amountPaid || ""}
+                  onChange={(e) => {
+                    const parsed = Number(e.target.value);
+                    setAmountPaid(
+                      Number.isFinite(parsed) ? Math.max(0, parsed) : 0,
+                    );
+                  }}
+                  placeholder="0.00"
+                  className="text-lg"
+                />
+                {amountPaid < cartTotal ? (
+                  <p className="mt-2 text-xs text-amber-700">
+                    Balance due:{" "}
+                    {formatCurrency(cartTotal - amountPaid, currency)}
+                  </p>
+                ) : null}
+              </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                onClick={() => setShowPaymentDialog(false)}
-                variant="outline"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleCompletePayment}
-                disabled={
-                  isCreatingSale ||
-                  !selectedClient ||
-                  isLoadingClients ||
-                  amountPaid < cartTotal
-                }
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isCreatingSale ? "Creating..." : "Create Sale"}
-              </Button>
+            <div className="space-y-4">
+              {/* Order Summary */}
+              <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Subtotal:</span>
+                  <span className="font-medium">
+                    {formatCurrency(cartSubtotal, currency)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-600">Tax:</span>
+                  <span className="font-medium">
+                    {formatCurrency(cartTax, currency)}
+                  </span>
+                </div>
+                {discount > 0 && (
+                  <div className="flex justify-between text-sm text-red-600">
+                    <span>
+                      Discount (
+                      {discountType === "percent"
+                        ? "%"
+                        : getCurrencyMarker(currency)}
+                      ):
+                    </span>
+                    <span className="font-medium">
+                      -
+                      {formatCurrency(
+                        discountType === "amount"
+                          ? discount
+                          : cartSubtotal * (discount / 100),
+                        currency,
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div className="border-t border-slate-200 pt-2 flex justify-between font-bold">
+                  <span>Total:</span>
+                  <span className="text-blue-600">
+                    {formatCurrency(cartTotal, currency)}
+                  </span>
+                </div>
+
+                {amountPaid >= cartTotal && (
+                  <div className="flex justify-between text-sm bg-green-50 p-2 rounded border border-green-200">
+                    <span className="text-green-700">Change:</span>
+                    <span className="font-semibold text-green-700">
+                      {formatCurrency(amountPaid - cartTotal, currency)}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  onClick={() => setShowPaymentDialog(false)}
+                  variant="outline"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCompletePayment}
+                  disabled={isCreatingSale || !selectedClient}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isCreatingSale ? "Creating..." : "Create Sale"}
+                </Button>
+              </div>
             </div>
           </div>
         </DialogContent>

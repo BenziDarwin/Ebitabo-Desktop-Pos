@@ -186,7 +186,6 @@ export class RemoteCatalogRepository implements CatalogRepository {
         "unitofMeasure",
         "costPrice",
         "salePrice",
-        "product_image",
       ],
       search_filter: "",
       page_no: pageNo,
@@ -216,7 +215,7 @@ export class RemoteCatalogRepository implements CatalogRepository {
   private async getServicesPage(pageNo: number): Promise<Service[]> {
     console.info(`${LOG_PREFIX} getServicesPage request`, { pageNo });
     const records = await sendRequestModel("services.services", {
-      fields: ["id", "name", "salePrice", "service_image"],
+      fields: ["id", "name", "salePrice"],
       search_filter: "",
       page_no: pageNo,
       limit: this.pageSize,

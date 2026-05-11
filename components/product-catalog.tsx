@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import {
   getProducts,
   searchProducts,
@@ -92,14 +93,19 @@ export function ProductCatalog({
   refreshKey = 0,
   isSyncingCatalog = false,
 }: ProductCatalogProps) {
-  const { addToCart } = usePOS();
-  const { currency } = useAuth();
+  const { addToCart, cart } = usePOS();
+  const { currency, business } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [clientUrl, setClientUrl] = useState<string | null>(null);
+  const isSalesBusiness = isSalesBusinessAccountType(business?.account_type);
+  const resolvedSelectedCategory =
+    isSalesBusiness && selectedCategory === "Services"
+      ? "Products"
+      : selectedCategory;
 
   useEffect(() => {
     let isMounted = true;
@@ -107,12 +113,11 @@ export function ProductCatalog({
     const loadData = async () => {
       setIsLoading(true);
       setClientUrl(Storage.getItem(STORAGE_KEYS.clientUrl));
-      const [productsData, servicesData] = await Promise.all([
-        getProducts(),
-        getServices(),
-      ]);
+      const productsData = await getProducts();
+      const servicesData = isSalesBusiness ? [] : await getServices();
       console.info(`${LOG_PREFIX} ProductCatalog loadData`, {
         refreshKey,
+        isSalesBusiness,
         products: productsData.length,
         services: servicesData.length,
       });
@@ -128,23 +133,22 @@ export function ProductCatalog({
     return () => {
       isMounted = false;
     };
-  }, [refreshKey]);
+  }, [isSalesBusiness, refreshKey]);
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
     console.info(`${LOG_PREFIX} ProductCatalog search`, {
       query,
-      selectedCategory,
+      selectedCategory: resolvedSelectedCategory,
+      isSalesBusiness,
     });
     if (query.trim()) {
-      const [productResults, allServices] = await Promise.all([
-        searchProducts(query),
-        getServices(),
-      ]);
-      const needle = query.trim().toLowerCase();
-      const serviceResults = allServices.filter((service) =>
-        service.name.toLowerCase().includes(needle),
-      );
+      const productResults = await searchProducts(query);
+      const serviceResults = isSalesBusiness
+        ? []
+        : (await getServices()).filter((service) =>
+            service.name.toLowerCase().includes(query.trim().toLowerCase()),
+          );
       console.info(`${LOG_PREFIX} ProductCatalog search results`, {
         query,
         products: productResults.length,
@@ -153,10 +157,8 @@ export function ProductCatalog({
       setProducts(productResults);
       setServices(serviceResults);
     } else {
-      const [productsData, servicesData] = await Promise.all([
-        getProducts(),
-        getServices(),
-      ]);
+      const productsData = await getProducts();
+      const servicesData = isSalesBusiness ? [] : await getServices();
       console.info(`${LOG_PREFIX} ProductCatalog search reset`, {
         products: productsData.length,
         services: servicesData.length,
@@ -169,6 +171,17 @@ export function ProductCatalog({
   const handleAddToCart = (product: Product) => {
     if (product.stock <= 0) {
       toast.error("Out of stock");
+      return;
+    }
+
+    const existingQuantity = cart.find(
+      (entry) => entry.productId === product.id,
+    )?.quantity;
+    const nextQuantity = (existingQuantity ?? 0) + 1;
+    if (nextQuantity > product.stock) {
+      toast.error(
+        `Only ${product.stock} unit${product.stock === 1 ? "" : "s"} available for ${product.name}.`,
+      );
       return;
     }
 
@@ -200,14 +213,19 @@ export function ProductCatalog({
     toast.success(`Added ${service.name} to cart`);
   };
 
-  const categories = ["All", "Products", "Services"];
+  const categories = isSalesBusiness
+    ? ["All", "Products"]
+    : ["All", "Products", "Services"];
   const displayedItems = {
     products:
-      selectedCategory === "All" || selectedCategory === "Products"
+      resolvedSelectedCategory === "All" ||
+      resolvedSelectedCategory === "Products"
         ? products
         : [],
-    services:
-      selectedCategory === "All" || selectedCategory === "Services"
+    services: isSalesBusiness
+      ? []
+      : resolvedSelectedCategory === "All" ||
+          resolvedSelectedCategory === "Services"
         ? services
         : [],
   };
@@ -236,7 +254,7 @@ export function ProductCatalog({
                 setSearchQuery("");
               }}
               className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
-                selectedCategory === cat
+                resolvedSelectedCategory === cat
                   ? "bg-blue-600 text-white"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
               }`}
@@ -265,7 +283,7 @@ export function ProductCatalog({
             {/* Products Section */}
             {displayedItems.products.length > 0 && (
               <div>
-                {selectedCategory === "All" && (
+                {resolvedSelectedCategory === "All" && (
                   <h3 className="font-semibold text-slate-700 mb-3 text-sm">
                     Products
                   </h3>
@@ -326,7 +344,7 @@ export function ProductCatalog({
             {/* Services Section */}
             {displayedItems.services.length > 0 && (
               <div>
-                {selectedCategory === "All" && (
+                {resolvedSelectedCategory === "All" && (
                   <h3 className="font-semibold text-slate-700 mb-3 text-sm">
                     Services
                   </h3>

@@ -4,6 +4,10 @@ import React, { createContext, useContext, useEffect, useState } from "react";
 import type { CartItem, Client } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
+import {
+  clampCartItemQuantityToStock,
+  getLocalProductStockMap,
+} from "@/services/cart-stock-service";
 
 interface CartContextType {
   cart: CartItem[];
@@ -97,18 +101,53 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }
 
   const addToCart = (item: CartItem) => {
+    const stockByProductId = getLocalProductStockMap();
+    const normalizedQuantity = Math.max(
+      1,
+      Math.floor(Number(item.quantity) || 1),
+    );
+    const clampedQuantity = clampCartItemQuantityToStock(
+      item,
+      normalizedQuantity,
+      stockByProductId,
+    );
+    const normalizedItem: CartItem = {
+      ...item,
+      quantity: clampedQuantity,
+      subtotal: item.price * clampedQuantity,
+    };
+
     setCart((prevCart) => {
-      const existingItem = prevCart.find((entry) => entry.id === item.id);
+      const existingItem = prevCart.find(
+        (entry) => entry.id === normalizedItem.id,
+      );
       if (!existingItem) {
-        return [...prevCart, item];
+        if (normalizedItem.quantity <= 0) {
+          return prevCart;
+        }
+        return [
+          ...prevCart,
+          {
+            ...normalizedItem,
+            subtotal: normalizedItem.price * normalizedItem.quantity,
+          },
+        ];
       }
 
+      const nextQuantity = clampCartItemQuantityToStock(
+        existingItem,
+        existingItem.quantity + normalizedItem.quantity,
+        stockByProductId,
+      );
+      if (nextQuantity <= 0) {
+        return prevCart.filter((entry) => entry.id !== normalizedItem.id);
+      }
       return prevCart.map((entry) =>
-        entry.id === item.id
+        entry.id === normalizedItem.id
           ? {
               ...entry,
-              quantity: entry.quantity + item.quantity,
-              subtotal: (entry.quantity + item.quantity) * entry.price,
+              quantity: nextQuantity,
+              subtotal: nextQuantity * entry.price,
             }
           : entry,
       );
@@ -125,14 +164,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    const stockByProductId = getLocalProductStockMap();
+    const normalizedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+
     setCart((prevCart) =>
       prevCart.map((entry) =>
         entry.id === itemId
-          ? {
-              ...entry,
-              quantity,
-              subtotal: quantity * entry.price,
-            }
+          ? (() => {
+              const clampedQuantity = clampCartItemQuantityToStock(
+                entry,
+                normalizedQuantity,
+                stockByProductId,
+              );
+              return {
+                ...entry,
+                quantity: clampedQuantity,
+                subtotal: clampedQuantity * entry.price,
+              };
+            })()
           : entry,
       ),
     );
@@ -166,7 +215,22 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   };
 
   const replaceCart = (items: CartItem[]) => {
-    setCart(items);
+    const stockByProductId = getLocalProductStockMap();
+    const normalizedItems = items
+      .map((item) => {
+        const normalizedQuantity = clampCartItemQuantityToStock(
+          item,
+          Math.max(1, Math.floor(Number(item.quantity) || 1)),
+          stockByProductId,
+        );
+        return {
+          ...item,
+          quantity: normalizedQuantity,
+          subtotal: normalizedQuantity * item.price,
+        };
+      })
+      .filter((item) => item.quantity > 0);
+    setCart(normalizedItems);
   };
 
   useEffect(() => {

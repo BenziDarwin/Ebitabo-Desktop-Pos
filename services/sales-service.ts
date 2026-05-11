@@ -1,17 +1,24 @@
-import type { BusinessDetails, CartItem, Client } from "@/core/entities";
+import type {
+  BusinessDetails,
+  CartItem,
+  Client,
+  SalePaymentMethod,
+} from "@/core/entities";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
-import { readLocalProducts } from "@/services/repositories/local-catalog-storage";
+import {
+  readLocalProducts,
+  readLocalProductClients,
+  readLocalServiceClients,
+  writeLocalProductClients,
+  writeLocalServiceClients,
+} from "@/services/repositories/local-catalog-storage";
 import { toProxyPath } from "@/services/repositories/proxy-path";
 import { sendRequestModel } from "@/services/repositories/send-request";
 
-export type SalePaymentMethod =
-  | "Cash"
-  | "Mobile Money"
-  | "Bank Transfer"
-  | "Debit/Credit Card"
-  | "Advance";
+export type { SalePaymentMethod } from "@/core/entities";
 
 interface ProductSaleLine {
   item_sold: number;
@@ -105,12 +112,20 @@ function toPositiveNumber(value: unknown, fallback = 0): number {
   return Math.max(0, toNumber(value, fallback));
 }
 
+function readNumericId(value: unknown): number | null {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return null;
+}
+
 function toDateOnlyString(value: Date): string {
   return value.toISOString().split("T")[0];
 }
 
 function isSalesBusiness(accountType?: string | null): boolean {
-  return accountType === "Sales Business";
+  return isSalesBusinessAccountType(accountType);
 }
 
 function generateSaleReference(prefix: "Sale" | "Service"): string {
@@ -154,10 +169,65 @@ function getSalesClientModel(accountType?: string | null): string {
     : "services.business_clients";
 }
 
+function readLocalBusinessClients(accountType?: string | null): Client[] {
+  return isSalesBusiness(accountType)
+    ? readLocalProductClients()
+    : readLocalServiceClients();
+}
+
+function writeLocalBusinessClients(
+  accountType: string | null | undefined,
+  clients: Client[],
+): void {
+  if (isSalesBusiness(accountType)) {
+    writeLocalProductClients(clients);
+    return;
+  }
+  writeLocalServiceClients(clients);
+}
+
 function getSaleModel(accountType?: string | null): string {
   return isSalesBusiness(accountType)
     ? "the_sales.the_sales"
     : "services.service_sales";
+}
+
+export function extractRemoteSaleId(response: unknown): number | null {
+  if (!response || typeof response !== "object") {
+    return null;
+  }
+
+  const record = response as Record<string, unknown>;
+  const direct = readNumericId(
+    record.id ?? record.record_id ?? record.resultId,
+  );
+  if (direct) return direct;
+
+  const newResource = record["New resource"];
+  if (Array.isArray(newResource) && newResource.length > 0) {
+    const first = newResource[0];
+    if (first && typeof first === "object") {
+      const nested = readNumericId((first as Record<string, unknown>).id);
+      if (nested) return nested;
+    }
+  }
+
+  const result = record.Result;
+  if (Array.isArray(result) && result.length > 0) {
+    const first = result[0];
+    if (first && typeof first === "object") {
+      const nested = readNumericId((first as Record<string, unknown>).id);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+}
+
+export function getCachedBusinessClients(
+  accountType?: string | null,
+): Client[] {
+  return readLocalBusinessClients(accountType);
 }
 
 async function postSaleModel(
@@ -215,28 +285,43 @@ async function postSaleModel(
 export async function fetchBusinessClients(
   accountType?: string | null,
 ): Promise<Client[]> {
+  const cachedClients = readLocalBusinessClients(accountType);
   const model = getSalesClientModel(accountType);
-  const records = await sendRequestModel(model, {
-    fields: ["id", "name", "advancedAmount"],
-  });
 
-  const clients: Client[] = [];
-  for (const record of records) {
-    const id = String(record.id ?? "").trim();
-    const name = String(record.name ?? "").trim();
-    if (!id || !name) {
-      continue;
+  try {
+    const records = await sendRequestModel(model, {
+      fields: ["id", "name", "advancedAmount"],
+    });
+
+    const clients: Client[] = [];
+    for (const record of records) {
+      const id = String(record.id ?? "").trim();
+      const name = String(record.name ?? "").trim();
+      if (!id || !name) {
+        continue;
+      }
+
+      clients.push({
+        id,
+        name,
+        advancedAmount: toPositiveNumber(record.advancedAmount),
+        createdAt: new Date(),
+      });
     }
 
-    clients.push({
-      id,
-      name,
-      advancedAmount: toPositiveNumber(record.advancedAmount),
-      createdAt: new Date(),
-    });
-  }
+    // Keep local data intact when the remote returns no rows unexpectedly.
+    if (clients.length > 0 || cachedClients.length === 0) {
+      writeLocalBusinessClients(accountType, clients);
+    }
 
-  return clients;
+    return clients.length > 0 ? clients : cachedClients;
+  } catch (error) {
+    console.error("[ClientSync] Failed to fetch clients from cloud", {
+      accountType,
+      error,
+    });
+    return cachedClients;
+  }
 }
 
 export async function createSaleFromCart(

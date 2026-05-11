@@ -12,13 +12,20 @@ import { Plus, Minus, Trash2, Printer } from "lucide-react";
 import { useAuth } from "@/provider/auth-provider";
 import { formatCurrency } from "@/lib/format-currency";
 import { printReceiptWeb } from "@/lib/print-receipt";
+import {
+  clampCartItemQuantityToStock,
+  getLocalProductStockMap,
+  resolveMaxAllowedQuantity,
+} from "@/services/cart-stock-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
+import { toast } from "sonner";
 
 interface OrderDetailsDialogProps {
   open: boolean;
   order: OrderDraft | null;
   onClose: () => void;
   onAddItems?: (items: CartItem[]) => void;
+  onContinueEditing?: (orderId: string) => void;
   showAddItems?: boolean;
   isCompletedOrder?: boolean;
 }
@@ -32,12 +39,14 @@ export function OrderDetailsDialog({
   order,
   onClose,
   onAddItems,
+  onContinueEditing,
   showAddItems = false,
   isCompletedOrder = false,
 }: OrderDetailsDialogProps) {
   const { currency, business } = useAuth();
   const [editMode, setEditMode] = useState(false);
   const [editedItems, setEditedItems] = useState<CartItem[]>([]);
+  const stockByProductId = getLocalProductStockMap();
 
   if (!order) return null;
 
@@ -79,16 +88,43 @@ export function OrderDetailsDialog({
 
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
     if (quantity <= 0) {
-      setEditedItems(editedItems.filter((item) => item.id !== itemId));
-    } else {
-      setEditedItems(
-        editedItems.map((item) =>
-          item.id === itemId
-            ? { ...item, quantity, subtotal: item.price * quantity }
-            : item,
-        ),
+      setEditedItems(editedItems.filter((entry) => entry.id !== itemId));
+      return;
+    }
+
+    const targetItem = editedItems.find((entry) => entry.id === itemId);
+    if (!targetItem) return;
+
+    const normalizedRequested = Math.max(1, Math.floor(quantity));
+    const clampedQuantity = clampCartItemQuantityToStock(
+      targetItem,
+      normalizedRequested,
+      stockByProductId,
+    );
+    const maxAllowed = resolveMaxAllowedQuantity(targetItem, stockByProductId);
+
+    if (maxAllowed !== null && normalizedRequested > maxAllowed) {
+      toast.error(
+        `Only ${maxAllowed} unit${maxAllowed === 1 ? "" : "s"} available for ${targetItem.name}.`,
       );
     }
+
+    if (clampedQuantity <= 0) {
+      setEditedItems(editedItems.filter((entry) => entry.id !== itemId));
+      return;
+    }
+
+    setEditedItems(
+      editedItems.map((entry) =>
+        entry.id === itemId
+          ? {
+              ...entry,
+              quantity: clampedQuantity,
+              subtotal: entry.price * clampedQuantity,
+            }
+          : entry,
+      ),
+    );
   };
 
   const handleUpdatePrice = (itemId: string, price: number) => {
@@ -168,14 +204,25 @@ export function OrderDetailsDialog({
             <div className="flex justify-between items-center mb-4">
               <h3 className="font-semibold text-slate-900">Items</h3>
               {!editMode && showAddItems && !isCompletedOrder && (
-                <Button
-                  onClick={handleStartEditMode}
-                  variant="outline"
-                  size="sm"
-                  className="rounded-lg"
-                >
-                  Edit
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleStartEditMode}
+                    variant="outline"
+                    size="sm"
+                    className="rounded-lg"
+                  >
+                    Edit
+                  </Button>
+                  {onContinueEditing ? (
+                    <Button
+                      onClick={() => onContinueEditing(order.id)}
+                      size="sm"
+                      className="rounded-lg bg-blue-600 hover:bg-blue-700"
+                    >
+                      Add Items
+                    </Button>
+                  ) : null}
+                </div>
               )}
               {editMode && (
                 <div className="flex flex-wrap justify-end gap-2">
@@ -269,11 +316,17 @@ export function OrderDetailsDialog({
                             <input
                               type="number"
                               min={0}
+                              step={1}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               value={item.quantity}
                               onChange={(e) =>
                                 handleUpdateQuantity(
                                   item.id,
-                                  parseInt(e.target.value, 10) || 0,
+                                  Math.max(
+                                    0,
+                                    Math.floor(Number(e.target.value) || 0),
+                                  ),
                                 )
                               }
                               className="w-10 text-center text-sm font-semibold border-0 focus:ring-0 bg-transparent"

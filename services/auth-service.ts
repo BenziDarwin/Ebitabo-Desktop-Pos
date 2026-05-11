@@ -215,8 +215,14 @@ export async function logoutSession(): Promise<void> {
     STORAGE_KEYS.userId,
     STORAGE_KEYS.authCookies,
     STORAGE_KEYS.user,
+    STORAGE_KEYS.catalogProducts,
+    STORAGE_KEYS.catalogServices,
+    STORAGE_KEYS.clientsProducts,
+    STORAGE_KEYS.clientsServices,
+    STORAGE_KEYS.catalogLastSyncedAt,
     STORAGE_KEYS.cartState,
     STORAGE_KEYS.orderDrafts,
+    STORAGE_KEYS.activeOrderDraftId,
     STORAGE_KEYS.salesRecords,
   ]);
 }

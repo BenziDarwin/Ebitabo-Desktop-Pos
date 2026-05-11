@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { Analytics } from "@vercel/analytics/next";
 import { AppProviders } from "@/provider/app-providers";
-import { appTheme } from "@/themes";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -37,14 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`bg-background ${appTheme.classes}`}
-      suppressHydrationWarning
-    >
-      <head>
-        <style id="app-theme-tokens">{appTheme.cssVariables}</style>
-      </head>
+    <html lang="en" className="bg-background" suppressHydrationWarning>
       <body className="font-sans antialiased" suppressHydrationWarning>
         <AppProviders>{children}</AppProviders>
         {shouldEnableVercelAnalytics && <Analytics />}

@@ -220,7 +220,15 @@ function proxyToBackend(req, res, apiProxyTarget) {
   req.pipe(upstreamReq);
 }
 
-function startDesktopBridge({ staticDir, apiProxyTarget, host = "127.0.0.1" }) {
+function startDesktopBridge({
+  staticDir,
+  apiProxyTarget,
+  host = "127.0.0.1",
+  port = 0,
+}) {
+  const listenPort =
+    Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 0;
+
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       const requestUrl = new URL(req.url || "/", "http://127.0.0.1");
@@ -235,8 +243,20 @@ function startDesktopBridge({ staticDir, apiProxyTarget, host = "127.0.0.1" }) {
       void serveStatic(req, res, staticDir);
     });
 
-    server.on("error", reject);
-    server.listen(0, host, () => {
+    server.on("error", (error) => {
+      if (listenPort > 0 && error && error.code === "EADDRINUSE") {
+        reject(
+          new Error(
+            `Desktop bridge port ${listenPort} is already in use. ` +
+              "Close the conflicting app or set EBITABO_DESKTOP_PORT to a free port.",
+          ),
+        );
+        return;
+      }
+      reject(error);
+    });
+
+    server.listen(listenPort, host, () => {
       const address = server.address();
       if (!address || typeof address === "string") {
         reject(new Error("Failed to resolve desktop bridge address"));

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { useRouter } from "next/navigation";
+import { formatCurrency } from "@/lib/format-currency";
 import {
   User,
   Mail,
@@ -15,12 +16,28 @@ import {
   Building2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getPendingTransactionsSummary } from "@/services/pending-transactions-service";
 
 export default function ProfilePage() {
   const { user, business, currency, logout } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
+    const pendingSummary = getPendingTransactionsSummary();
+    if (pendingSummary.count > 0) {
+      const shouldLogout = window.confirm(
+        `You have ${pendingSummary.count} pending transaction${
+          pendingSummary.count === 1 ? "" : "s"
+        } (${formatCurrency(
+          pendingSummary.totalAmount,
+          currency,
+        )}) that are not synced yet.\n\nGo to History and sync first.\n\nLogout anyway?`,
+      );
+      if (!shouldLogout) {
+        return;
+      }
+    }
+
     await logout();
     toast.success("Logged out successfully");
     router.push("/login");
@@ -152,6 +169,7 @@ export default function ProfilePage() {
           <h3 className="text-lg font-bold text-red-900 mb-4">Danger Zone</h3>
           <p className="text-sm text-red-800 mb-6">
             Logging out clears local session keys and returns you to login.
+            Pending transactions should be synced first.
           </p>
           <Button
             onClick={handleLogout}

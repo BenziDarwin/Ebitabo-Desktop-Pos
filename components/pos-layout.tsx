@@ -4,6 +4,7 @@ import { useAuth } from "@/provider/auth-provider";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "./protected-route";
 import { Button } from "@/components/ui/button";
+import { formatCurrency } from "@/lib/format-currency";
 import Image from "next/image";
 import appLogo from "@/assets/images/logo.png";
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogOut, User } from "lucide-react";
 import Link from "next/link";
+import { getPendingTransactionsSummary } from "@/services/pending-transactions-service";
 
 interface POSLayoutProps {
   children: React.ReactNode;
@@ -22,10 +24,25 @@ interface POSLayoutProps {
 }
 
 export function POSLayout({ children, currentPage }: POSLayoutProps) {
-  const { user, business, logout } = useAuth();
+  const { user, business, currency, logout } = useAuth();
   const router = useRouter();
 
   const handleLogout = async () => {
+    const pendingSummary = getPendingTransactionsSummary();
+    if (pendingSummary.count > 0) {
+      const shouldLogout = window.confirm(
+        `You have ${pendingSummary.count} pending transaction${
+          pendingSummary.count === 1 ? "" : "s"
+        } (${formatCurrency(
+          pendingSummary.totalAmount,
+          currency,
+        )}) that are not synced yet.\n\nGo to History and sync first.\n\nLogout anyway?`,
+      );
+      if (!shouldLogout) {
+        return;
+      }
+    }
+
     await logout();
     router.push("/login");
   };
