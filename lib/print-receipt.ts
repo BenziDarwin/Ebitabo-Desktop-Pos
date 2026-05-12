@@ -1,5 +1,6 @@
 import type { BusinessDetails, CartItem } from "@/core/entities";
 import appLogo from "@/assets/images/logo.png";
+import { formatQuantity } from "@/lib/quantity";
 
 interface WebReceiptPrintData {
   items: CartItem[];
@@ -8,6 +9,7 @@ interface WebReceiptPrintData {
   receiptNumber?: string;
   amountPaid?: number;
   balance?: number;
+  createdBy?: string;
   type: string;
   timestamp?: Date;
   business?: BusinessDetails | null;
@@ -29,12 +31,17 @@ export function generateReceiptHtml({
   receiptNumber,
   amountPaid,
   balance,
+  createdBy,
   type,
   timestamp,
   business,
 }: WebReceiptPrintData): string {
   const receiptNo = receiptNumber || `RCP-${Date.now()}`;
   const currencyText = currency || "";
+  const paidValue = amountPaid ?? total;
+  const balanceValue = balance ?? total - paidValue;
+  const balanceLabel = balanceValue < 0 ? "Change" : "Balance";
+  const createdByText = createdBy?.trim();
   const logoSrc = business?.business_logo
     ? `data:image/png;base64,${business.business_logo}`
     : appLogo.src;
@@ -61,10 +68,10 @@ export function generateReceiptHtml({
       font-family: "Courier New", monospace;
       width: 80mm;
       background: #fff;
-      font-size: 11px;
-      line-height: 1.55;
+      font-size: 12px;
+      line-height: 1.6;
       padding: 4mm 4mm 12mm 4mm;
-      letter-spacing: 0.4px;
+      letter-spacing: 0.45px;
     }
 
     .receipt { width: 100%; }
@@ -99,15 +106,15 @@ export function generateReceiptHtml({
     }
 
     .company-details {
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.7;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .receipt-info {
       margin-bottom: 10px;
-      font-size: 11px;
-      font-weight: 700;
+      font-size: 12px;
+      font-weight: 800;
     }
 
     .receipt-info-row {
@@ -116,10 +123,21 @@ export function generateReceiptHtml({
       margin-bottom: 6px;
     }
 
+    .receipt-info-row span {
+      font-weight: 800;
+    }
+
+    .receipt-info-row strong {
+      font-weight: 900;
+      text-align: right;
+      max-width: 46mm;
+      word-wrap: break-word;
+    }
+
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 11px;
+      font-size: 12px;
       margin-bottom: 10px;
     }
 
@@ -131,7 +149,7 @@ export function generateReceiptHtml({
 
     .items-table td {
       padding: 6px 0;
-      font-weight: 700;
+      font-weight: 800;
     }
 
     .item-name {
@@ -144,7 +162,7 @@ export function generateReceiptHtml({
       border-top: 3px solid #000;
       padding-top: 8px;
       margin-top: 8px;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     .total-row {
@@ -166,7 +184,7 @@ export function generateReceiptHtml({
       border-top: 3px dashed #000;
       margin-top: 12px;
       padding-top: 10px;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     .balance-row {
@@ -179,7 +197,7 @@ export function generateReceiptHtml({
       padding-top: 12px;
       border-top: 3px dashed #000;
       text-align: center;
-      font-size: 11px;
+      font-size: 12px;
       line-height: 1.7;
       font-weight: 900;
     }
@@ -232,6 +250,16 @@ export function generateReceiptHtml({
         <span>Reference</span>
         <strong>${escapeHtml(receiptNo)}</strong>
       </div>
+      ${
+        createdByText
+          ? `
+      <div class="receipt-info-row">
+        <span>Made By</span>
+        <strong>${escapeHtml(createdByText)}</strong>
+      </div>
+      `
+          : ""
+      }
     </div>
 
     <table class="items-table">
@@ -248,7 +276,7 @@ export function generateReceiptHtml({
             (item) => `
             <tr>
               <td class="item-name">${escapeHtml(item.name)}</td>
-              <td style="text-align:center;">${item.quantity}</td>
+              <td style="text-align:center;">${formatQuantity(item.quantity)}</td>
               <td style="text-align:right;">${currencyText}${(item.price * item.quantity).toLocaleString()}</td>
             </tr>
           `,
@@ -265,23 +293,17 @@ export function generateReceiptHtml({
     </div>
 
     ${
-      amountPaid !== undefined
+      amountPaid !== undefined || balance !== undefined
         ? `
           <div class="payment-section">
             <div class="total-row">
               <span>Paid</span>
-              <strong>${currencyText} ${amountPaid.toLocaleString()}</strong>
+              <strong>${currencyText} ${paidValue.toLocaleString()}</strong>
             </div>
-            ${
-              balance !== undefined
-                ? `
-                <div class="total-row balance-row">
-                  <span>Balance</span>
-                  <strong>${currencyText} ${Math.abs(balance).toLocaleString()}</strong>
-                </div>
-              `
-                : ""
-            }
+            <div class="total-row balance-row">
+              <span>${balanceLabel}</span>
+              <strong>${currencyText} ${Math.abs(balanceValue).toLocaleString()}</strong>
+            </div>
           </div>
         `
         : ""

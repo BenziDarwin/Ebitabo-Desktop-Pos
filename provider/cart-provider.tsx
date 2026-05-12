@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
 import type { CartItem, Client } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
+import { toPositiveQuantity } from "@/lib/quantity";
 import { Storage } from "@/lib/storage";
 import {
   clampCartItemQuantityToStock,
@@ -102,10 +103,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = (item: CartItem) => {
     const stockByProductId = getLocalProductStockMap();
-    const normalizedQuantity = Math.max(
-      1,
-      Math.floor(Number(item.quantity) || 1),
-    );
+    const normalizedQuantity = toPositiveQuantity(item.quantity, 1);
     const clampedQuantity = clampCartItemQuantityToStock(
       item,
       normalizedQuantity,
@@ -165,7 +163,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     }
 
     const stockByProductId = getLocalProductStockMap();
-    const normalizedQuantity = Math.max(1, Math.floor(Number(quantity) || 1));
+    const normalizedQuantity = toPositiveQuantity(quantity, 1);
 
     setCart((prevCart) =>
       prevCart.map((entry) =>
@@ -220,7 +218,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       .map((item) => {
         const normalizedQuantity = clampCartItemQuantityToStock(
           item,
-          Math.max(1, Math.floor(Number(item.quantity) || 1)),
+          toPositiveQuantity(item.quantity, 1),
           stockByProductId,
         );
         return {

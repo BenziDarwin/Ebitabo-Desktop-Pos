@@ -7,6 +7,7 @@ import type { CartItem } from "@/lib/types";
 import { useReactToPrint } from "react-to-print";
 import { useAuth } from "@/provider/auth-provider";
 import { formatCurrency } from "@/lib/format-currency";
+import { formatQuantity } from "@/lib/quantity";
 
 interface ReceiptProps {
   items: CartItem[];
@@ -81,7 +82,7 @@ export function Receipt({
           </div>
           {items.map((item) => (
             <div key={item.id} className="grid grid-cols-3 gap-2 text-xs mb-1">
-              <div className="col-span-1">{item.quantity}</div>
+              <div className="col-span-1">{formatQuantity(item.quantity)}</div>
               <div className="col-span-1">
                 <div>{item.name}</div>
                 <div className="text-slate-600">

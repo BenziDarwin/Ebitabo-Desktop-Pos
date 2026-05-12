@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -16,8 +17,10 @@ import { Trash2, Eye, Plus, FileText } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/format-currency";
+import { formatQuantity, toPositiveQuantity } from "@/lib/quantity";
 import {
   findFirstInsufficientStock,
+  formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
@@ -55,7 +58,7 @@ export default function OrdersPage() {
     if (selectedDraft) {
       const normalizedItems = items.map((item) => ({
         ...item,
-        quantity: Math.max(1, Math.floor(Number(item.quantity) || 1)),
+        quantity: toPositiveQuantity(item.quantity, 1),
       }));
       const stockByProductId = getLocalProductStockMap();
       const stockIssue = findFirstInsufficientStock(
@@ -64,7 +67,7 @@ export default function OrdersPage() {
       );
       if (stockIssue) {
         toast.error(
-          `${stockIssue.itemName} exceeds stock. Available: ${stockIssue.available}, requested: ${stockIssue.requested}.`,
+          `${stockIssue.itemName} exceeds stock. Available: ${formatStockQuantity(stockIssue.available)}, requested: ${formatQuantity(stockIssue.requested)}.`,
         );
         return;
       }
@@ -186,7 +189,7 @@ export default function OrdersPage() {
                           className="flex justify-between text-sm text-slate-600"
                         >
                           <span>
-                            {item.name} x{item.quantity}
+                            {item.name} x{formatQuantity(item.quantity)}
                           </span>
                           <span className="font-medium">
                             {formatCurrency(item.subtotal, currency)}
@@ -302,10 +305,11 @@ export default function OrdersPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Draft?</DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. The draft will be permanently
+              deleted.
+            </DialogDescription>
           </DialogHeader>
-          <p className="text-slate-600 mb-6">
-            This action cannot be undone. The draft will be permanently deleted.
-          </p>
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => setShowDeleteConfirm(null)}

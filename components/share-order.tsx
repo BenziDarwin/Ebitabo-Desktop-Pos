@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -12,6 +13,7 @@ import { Share2, Copy, Check, Mail, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/provider/auth-provider";
 import { formatCurrency } from "@/lib/format-currency";
+import { formatQuantity } from "@/lib/quantity";
 import type { CartItem } from "@/lib/types";
 
 interface ShareOrderProps {
@@ -41,7 +43,7 @@ Items:
 ${items
   .map(
     (item) =>
-      `- ${item.name} x${item.quantity}: ${formatCurrency(item.subtotal, currency)}`,
+      `- ${item.name} x${formatQuantity(item.quantity)}: ${formatCurrency(item.subtotal, currency)}`,
   )
   .join("\n")}
 
@@ -86,6 +88,9 @@ Ordered from Ebtabo POS System
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Share Order</DialogTitle>
+            <DialogDescription>
+              Copy or share this order summary with the customer.
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">

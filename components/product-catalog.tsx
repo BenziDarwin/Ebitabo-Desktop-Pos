@@ -13,6 +13,7 @@ import type { Product, Service } from "@/lib/types";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
 import { formatCurrency } from "@/lib/format-currency";
+import { formatQuantity, toPositiveQuantity } from "@/lib/quantity";
 import { resolveImageUri } from "@/lib/resolve-image-uri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -174,13 +175,15 @@ export function ProductCatalog({
       return;
     }
 
+    const addedQuantity = toPositiveQuantity(Math.min(1, product.stock), 1);
+
     const existingQuantity = cart.find(
       (entry) => entry.productId === product.id,
     )?.quantity;
-    const nextQuantity = (existingQuantity ?? 0) + 1;
+    const nextQuantity = (existingQuantity ?? 0) + addedQuantity;
     if (nextQuantity > product.stock) {
       toast.error(
-        `Only ${product.stock} unit${product.stock === 1 ? "" : "s"} available for ${product.name}.`,
+        `Only ${formatQuantity(product.stock)} units available for ${product.name}.`,
       );
       return;
     }
@@ -189,10 +192,10 @@ export function ProductCatalog({
       id: product.id,
       productId: product.id,
       name: product.name,
-      quantity: 1,
+      quantity: addedQuantity,
       price: product.price,
       tax: product.tax,
-      subtotal: product.price,
+      subtotal: product.price * addedQuantity,
     });
 
     toast.success(`Added ${product.name} to cart`);
@@ -320,7 +323,7 @@ export function ProductCatalog({
                             }`}
                           >
                             {product.stock > 0
-                              ? `${product.stock} in stock`
+                              ? `${formatQuantity(product.stock)} in stock`
                               : "Out"}
                           </span>
                         </div>

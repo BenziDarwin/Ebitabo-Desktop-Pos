@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/provider/auth-provider";
 import { formatCurrency } from "@/lib/format-currency";
+import { formatQuantity } from "@/lib/quantity";
 import { POSLayout } from "@/components/pos-layout";
 import { Button } from "@/components/ui/button";
 import { OrderDetailsDialog } from "@/components/order-details-dialog";
@@ -12,7 +13,7 @@ import {
   type DailySalesRecord,
 } from "@/services/history-reports-service";
 import { syncPendingTransactions } from "@/services/transaction-sync-service";
-import type { CompletedOrder, OrderDraft } from "@/lib/types";
+import type { CompletedOrder } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
   XAxis,
@@ -219,6 +220,7 @@ export default function HistoryPage() {
     null,
   );
   const [showOrderDetails, setShowOrderDetails] = useState(false);
+  const hasAutoSyncedOnEntry = useRef(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -317,45 +319,70 @@ export default function HistoryPage() {
     };
   }, [displayedDailySales, filteredOrders]);
 
-  const handleSyncPending = async () => {
-    if (isSyncingPending) return;
-    if (pendingCount === 0) {
-      toast.info("No pending transactions to sync.");
-      return;
-    }
-    if (typeof navigator !== "undefined" && navigator.onLine === false) {
-      toast.error("You are offline. Reconnect and try syncing again.");
-      return;
-    }
-
-    setIsSyncingPending(true);
-    try {
-      const result = await syncPendingTransactions({
-        business,
-        createdBy: user?.name || user?.username,
-      });
-      await loadData();
-
-      if (result.attempted === 0) {
-        toast.info("No pending transactions were found.");
-      } else if (result.failed === 0) {
-        toast.success(
-          `Synced ${result.synced} pending transaction${result.synced === 1 ? "" : "s"}.`,
-        );
-      } else if (result.synced > 0) {
-        toast.warning(
-          `Synced ${result.synced}, but ${result.failed} transaction${result.failed === 1 ? "" : "s"} still pending.`,
-        );
-      } else {
-        toast.error("Could not sync pending transactions. Check network/API.");
+  const runPendingSync = useCallback(
+    async (showToasts: boolean) => {
+      if (isSyncingPending) return;
+      if (pendingCount === 0) {
+        if (showToasts) {
+          toast.info("No pending transactions to sync.");
+        }
+        return;
       }
-    } catch (error) {
-      console.error("Failed to sync pending transactions", error);
-      toast.error("Failed to sync pending transactions.");
-    } finally {
-      setIsSyncingPending(false);
-    }
+      if (typeof navigator !== "undefined" && navigator.onLine === false) {
+        if (showToasts) {
+          toast.error("You are offline. Reconnect and try syncing again.");
+        }
+        return;
+      }
+
+      setIsSyncingPending(true);
+      try {
+        const result = await syncPendingTransactions({
+          business,
+          createdBy: user?.name || user?.username,
+        });
+        await loadData();
+
+        if (!showToasts) {
+          return;
+        }
+
+        if (result.attempted === 0) {
+          toast.info("No pending transactions were found.");
+        } else if (result.failed === 0) {
+          toast.success(
+            `Synced ${result.synced} pending transaction${result.synced === 1 ? "" : "s"}.`,
+          );
+        } else if (result.synced > 0) {
+          toast.warning(
+            `Synced ${result.synced}, but ${result.failed} transaction${result.failed === 1 ? "" : "s"} still pending.`,
+          );
+        } else {
+          toast.error(
+            "Could not sync pending transactions. Check network/API.",
+          );
+        }
+      } catch (error) {
+        console.error("Failed to sync pending transactions", error);
+        if (showToasts) {
+          toast.error("Failed to sync pending transactions.");
+        }
+      } finally {
+        setIsSyncingPending(false);
+      }
+    },
+    [business, isSyncingPending, loadData, pendingCount, user],
+  );
+
+  const handleSyncPending = () => {
+    void runPendingSync(true);
   };
+
+  useEffect(() => {
+    if (isLoading || hasAutoSyncedOnEntry.current) return;
+    hasAutoSyncedOnEntry.current = true;
+    void runPendingSync(false);
+  }, [isLoading, runPendingSync]);
 
   if (isLoading) {
     return (
@@ -533,7 +560,7 @@ export default function HistoryPage() {
                         {product.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {product.sold} sold
+                        {formatQuantity(product.sold)} sold
                       </p>
                     </div>
                   </div>
@@ -663,7 +690,7 @@ export default function HistoryPage() {
 
         <OrderDetailsDialog
           open={showOrderDetails}
-          order={selectedOrder as OrderDraft | null}
+          order={selectedOrder}
           onClose={() => {
             setShowOrderDetails(false);
             setSelectedOrder(null);

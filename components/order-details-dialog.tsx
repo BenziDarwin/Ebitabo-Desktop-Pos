@@ -4,6 +4,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -11,18 +12,25 @@ import { Button } from "@/components/ui/button";
 import { Plus, Minus, Trash2, Printer } from "lucide-react";
 import { useAuth } from "@/provider/auth-provider";
 import { formatCurrency } from "@/lib/format-currency";
+import {
+  formatQuantity,
+  QUANTITY_STEP,
+  toNonNegativeQuantity,
+  toPositiveQuantity,
+} from "@/lib/quantity";
 import { printReceiptWeb } from "@/lib/print-receipt";
 import {
   clampCartItemQuantityToStock,
+  formatStockQuantity,
   getLocalProductStockMap,
   resolveMaxAllowedQuantity,
 } from "@/services/cart-stock-service";
-import type { OrderDraft, CartItem } from "@/lib/types";
+import type { OrderDraft, CompletedOrder, CartItem } from "@/lib/types";
 import { toast } from "sonner";
 
 interface OrderDetailsDialogProps {
   open: boolean;
-  order: OrderDraft | null;
+  order: OrderDraft | CompletedOrder | null;
   onClose: () => void;
   onAddItems?: (items: CartItem[]) => void;
   onContinueEditing?: (orderId: string) => void;
@@ -32,6 +40,36 @@ interface OrderDetailsDialogProps {
 
 function cloneCartItems(items: CartItem[]): CartItem[] {
   return items.map((item) => ({ ...item }));
+}
+
+function resolvePaidAmount(order: OrderDraft | CompletedOrder): number {
+  if ("sync" in order) {
+    const fromSync = Number(order.sync.amountPaid);
+    if (Number.isFinite(fromSync) && fromSync >= 0) {
+      return fromSync;
+    }
+  }
+
+  if ("payments" in order && Array.isArray(order.payments)) {
+    const fromPayment = Number(order.payments[0]?.amount);
+    if (Number.isFinite(fromPayment) && fromPayment >= 0) {
+      return fromPayment;
+    }
+  }
+
+  return Number.isFinite(order.total) ? Math.max(0, order.total) : 0;
+}
+
+function resolveCreatedBy(
+  order: OrderDraft | CompletedOrder,
+): string | undefined {
+  if ("sync" in order) {
+    const fromSync = order.sync.createdBy?.trim();
+    if (fromSync) {
+      return fromSync;
+    }
+  }
+  return undefined;
 }
 
 export function OrderDetailsDialog({
@@ -72,11 +110,17 @@ export function OrderDetailsDialog({
   };
 
   const handlePrint = () => {
+    const amountPaid = resolvePaidAmount(order);
+    const balance = order.total - amountPaid;
+    const createdBy = resolveCreatedBy(order);
     const opened = printReceiptWeb({
       items: order.items,
       total: order.total,
       currency: currency?.name ?? "",
       receiptNumber: order.id,
+      amountPaid,
+      balance,
+      createdBy,
       type: isCompletedOrder ? "Sale" : "Order",
       timestamp: new Date(order.createdAt),
       business,
@@ -95,7 +139,7 @@ export function OrderDetailsDialog({
     const targetItem = editedItems.find((entry) => entry.id === itemId);
     if (!targetItem) return;
 
-    const normalizedRequested = Math.max(1, Math.floor(quantity));
+    const normalizedRequested = toPositiveQuantity(quantity, QUANTITY_STEP);
     const clampedQuantity = clampCartItemQuantityToStock(
       targetItem,
       normalizedRequested,
@@ -105,7 +149,7 @@ export function OrderDetailsDialog({
 
     if (maxAllowed !== null && normalizedRequested > maxAllowed) {
       toast.error(
-        `Only ${maxAllowed} unit${maxAllowed === 1 ? "" : "s"} available for ${targetItem.name}.`,
+        `Only ${formatStockQuantity(maxAllowed)} units available for ${targetItem.name}.`,
       );
     }
 
@@ -163,12 +207,18 @@ export function OrderDetailsDialog({
     0,
     currentSubtotal + currentTax - discountAmount,
   );
+  const paidAmount = isCompletedOrder ? resolvePaidAmount(order) : 0;
+  const balanceAmount = isCompletedOrder ? currentSubtotal - paidAmount : 0;
+  const balanceLabel = balanceAmount < 0 ? "Change" : "Balance";
+  const displayTotal = isCompletedOrder
+    ? currentSubtotal - balanceAmount
+    : currentTotal;
   const formatPrice = (value: number) => formatCurrency(value, currency);
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="w-[95vw] max-w-[1200px] sm:max-w-[1200px]">
-        <DialogHeader>
+      <DialogContent className="flex w-[95vw] max-w-[1200px] max-h-[85vh] flex-col overflow-hidden p-0 sm:max-w-[1200px]">
+        <DialogHeader className="shrink-0 px-6 pt-6 pr-14">
           <div className="flex items-center justify-between">
             <DialogTitle>
               Order #{order.id.slice(-6)} -{" "}
@@ -186,9 +236,12 @@ export function OrderDetailsDialog({
               </Button>
             )}
           </div>
+          <DialogDescription className="sr-only">
+            Review order details, update items, and print the receipt.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 pb-6">
           {/* Client Info */}
           {order.client && (
             <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
@@ -304,7 +357,7 @@ export function OrderDetailsDialog({
                               onClick={() =>
                                 handleUpdateQuantity(
                                   item.id,
-                                  Math.max(0, item.quantity - 1),
+                                  Math.max(0, item.quantity - QUANTITY_STEP),
                                 )
                               }
                               variant="ghost"
@@ -316,24 +369,23 @@ export function OrderDetailsDialog({
                             <input
                               type="number"
                               min={0}
-                              step={1}
-                              inputMode="numeric"
-                              pattern="[0-9]*"
+                              step={QUANTITY_STEP}
+                              inputMode="decimal"
                               value={item.quantity}
                               onChange={(e) =>
                                 handleUpdateQuantity(
                                   item.id,
-                                  Math.max(
-                                    0,
-                                    Math.floor(Number(e.target.value) || 0),
-                                  ),
+                                  toNonNegativeQuantity(Number(e.target.value)),
                                 )
                               }
                               className="w-10 text-center text-sm font-semibold border-0 focus:ring-0 bg-transparent"
                             />
                             <Button
                               onClick={() =>
-                                handleUpdateQuantity(item.id, item.quantity + 1)
+                                handleUpdateQuantity(
+                                  item.id,
+                                  item.quantity + QUANTITY_STEP,
+                                )
                               }
                               variant="ghost"
                               size="sm"
@@ -366,7 +418,7 @@ export function OrderDetailsDialog({
                       </div>
                       <div className="text-right shrink-0">
                         <p className="font-semibold text-slate-900">
-                          {item.quantity}x
+                          {formatQuantity(item.quantity)}x
                         </p>
                         <p className="font-bold text-blue-600">
                           {formatPrice(item.subtotal)}
@@ -395,15 +447,24 @@ export function OrderDetailsDialog({
                 </span>
               </div>
             )}
-            <div className="flex justify-between text-sm">
-              <span className="text-slate-700">Tax</span>
-              <span className="font-medium text-slate-900">
-                {formatPrice(currentTax)}
-              </span>
-            </div>
+            {isCompletedOrder ? (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-700">{balanceLabel}</span>
+                <span className="font-medium text-slate-900">
+                  {formatPrice(Math.abs(balanceAmount))}
+                </span>
+              </div>
+            ) : (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-700">Tax</span>
+                <span className="font-medium text-slate-900">
+                  {formatPrice(currentTax)}
+                </span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold text-lg border-t border-slate-300 pt-3 mt-2">
               <span className="text-slate-900">Total</span>
-              <span className="text-blue-600">{formatPrice(currentTotal)}</span>
+              <span className="text-blue-600">{formatPrice(displayTotal)}</span>
             </div>
           </div>
 

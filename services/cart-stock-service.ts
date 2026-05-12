@@ -1,4 +1,9 @@
 import type { CartItem } from "@/core/entities";
+import {
+  formatQuantity,
+  toNonNegativeQuantity,
+  toPositiveQuantity,
+} from "@/lib/quantity";
 import { readLocalProducts } from "@/services/repositories/local-catalog-storage";
 
 export interface InsufficientStockIssue {
@@ -7,18 +12,10 @@ export interface InsufficientStockIssue {
   available: number;
 }
 
-function toWholeUnits(value: number): number {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.floor(value));
-}
-
 export function getLocalProductStockMap(): Map<string, number> {
   const map = new Map<string, number>();
   for (const product of readLocalProducts()) {
-    map.set(
-      String(product.id),
-      Math.max(0, Math.floor(Number(product.stock) || 0)),
-    );
+    map.set(String(product.id), toNonNegativeQuantity(Number(product.stock)));
   }
   return map;
 }
@@ -30,7 +27,7 @@ export function resolveMaxAllowedQuantity(
   if (!cartItem.productId) return null;
   const available = stockByProductId.get(String(cartItem.productId));
   if (available === undefined) return null;
-  return Math.max(0, toWholeUnits(available));
+  return toNonNegativeQuantity(available);
 }
 
 export function clampCartItemQuantityToStock(
@@ -38,7 +35,7 @@ export function clampCartItemQuantityToStock(
   requestedQuantity: number,
   stockByProductId: Map<string, number>,
 ): number {
-  const normalizedRequested = toWholeUnits(requestedQuantity);
+  const normalizedRequested = toPositiveQuantity(requestedQuantity);
   const maxAllowed = resolveMaxAllowedQuantity(cartItem, stockByProductId);
   if (maxAllowed === null) return normalizedRequested;
   if (maxAllowed <= 0) return 0;
@@ -53,7 +50,8 @@ export function findFirstInsufficientStock(
     if (!item.productId) continue;
     const available = stockByProductId.get(String(item.productId));
     if (available === undefined) continue;
-    const requested = toWholeUnits(item.quantity);
+    const requested = toNonNegativeQuantity(item.quantity);
+    if (requested <= 0) continue;
     if (requested > available) {
       return {
         itemName: item.name,
@@ -63,4 +61,8 @@ export function findFirstInsufficientStock(
     }
   }
   return null;
+}
+
+export function formatStockQuantity(value: number, locale?: string): string {
+  return formatQuantity(value, locale);
 }

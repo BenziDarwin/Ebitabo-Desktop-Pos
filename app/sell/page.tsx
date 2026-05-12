@@ -45,8 +45,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { formatCurrency, getCurrencyMarker } from "@/lib/format-currency";
+import { formatQuantity } from "@/lib/quantity";
 import {
   findFirstInsufficientStock,
+  formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
 import { Check, ChevronsUpDown } from "lucide-react";
@@ -247,7 +249,7 @@ export default function SellPage() {
     );
     if (stockIssue) {
       toast.error(
-        `${stockIssue.itemName} exceeds stock. Available: ${stockIssue.available}, requested: ${stockIssue.requested}.`,
+        `${stockIssue.itemName} exceeds stock. Available: ${formatStockQuantity(stockIssue.available)}, requested: ${formatQuantity(stockIssue.requested)}.`,
       );
       return;
     }
@@ -442,7 +444,7 @@ export default function SellPage() {
           }
         }}
       >
-        <DialogContent className="w-[96vw] max-w-4xl max-h-[90vh] overflow-hidden p-0">
+        <DialogContent className="flex w-[98vw] max-h-[90vh] flex-col overflow-hidden p-0 sm:w-[96vw] sm:max-w-[1280px] lg:max-w-[1440px]">
           <DialogHeader className="px-6 pt-6">
             <DialogTitle>Create Sale</DialogTitle>
             <DialogDescription>
@@ -450,7 +452,7 @@ export default function SellPage() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid gap-4 overflow-y-auto px-6 pb-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+          <div className="grid gap-4 overflow-y-auto px-6 pb-6 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
             <div className="space-y-4">
               {/* Client Selection */}
               <div>

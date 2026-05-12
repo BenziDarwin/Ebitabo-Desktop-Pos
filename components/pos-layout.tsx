@@ -55,7 +55,7 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
 
   return (
     <ProtectedRoute>
-      <div className="min-h-screen bg-slate-50">
+      <div className="flex min-h-screen flex-col bg-slate-50">
         {/* Header */}
         <header className="bg-white border-b border-slate-200 shadow-md sticky top-0 z-50">
           <div className="flex items-center justify-between px-6 py-4">
@@ -145,7 +145,7 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1">{children}</main>
+        <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </ProtectedRoute>
   );
