@@ -1,5 +1,5 @@
 export const QUANTITY_MAX_DECIMALS = 3;
-export const QUANTITY_STEP = 0.1;
+export const QUANTITY_STEP = 1;
 export const MIN_QUANTITY = 0.001;
 
 function toFiniteNumber(value: number): number {
