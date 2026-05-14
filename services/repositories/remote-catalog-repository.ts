@@ -115,13 +115,7 @@ function mapProduct(record: Record<string, unknown>): Product {
     ),
     stock,
     image: firstNonEmptyString(
-      [
-        record.image,
-        record.photo,
-        record.image_1920,
-        record.product_image,
-        record.business_logo,
-      ],
+      [record.product_image, record.image, record.photo, record.image_1920],
       "",
     ),
     description: firstNonEmptyString([record.description, record.details], ""),
@@ -159,13 +153,7 @@ function mapService(record: Record<string, unknown>): Service {
       ]),
     ),
     image: firstNonEmptyString(
-      [
-        record.image,
-        record.photo,
-        record.image_1920,
-        record.service_image,
-        record.business_logo,
-      ],
+      [record.service_image, record.image, record.photo, record.image_1920],
       "",
     ),
     tax: toNumber(firstDefined([record.tax, record.tax_rate, 0])),
@@ -186,6 +174,7 @@ export class RemoteCatalogRepository implements CatalogRepository {
         "unitofMeasure",
         "costPrice",
         "salePrice",
+        "product_image",
       ],
       search_filter: "",
       page_no: pageNo,
@@ -215,7 +204,7 @@ export class RemoteCatalogRepository implements CatalogRepository {
   private async getServicesPage(pageNo: number): Promise<Service[]> {
     console.info(`${LOG_PREFIX} getServicesPage request`, { pageNo });
     const records = await sendRequestModel("services.services", {
-      fields: ["id", "name", "salePrice"],
+      fields: ["id", "name", "salePrice", "service_image"],
       search_filter: "",
       page_no: pageNo,
       limit: this.pageSize,

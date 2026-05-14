@@ -72,24 +72,39 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
     return [];
   });
 
+  const previousProductImages = new Map(
+    previousProducts.map((product) => [product.id, product.image ?? ""]),
+  );
+  const hydratedCloudProducts = cloudProducts.map((product) => ({
+    ...product,
+    image: product.image || previousProductImages.get(product.id) || undefined,
+  }));
+
   const cloudServices = isSalesBusiness
     ? []
     : await getServicesUseCase.execute().catch((error) => {
         console.error(`${LOG_PREFIX} cloud services fetch failed`, error);
         return [];
       });
+  const previousServiceImages = new Map(
+    previousServices.map((service) => [service.id, service.image ?? ""]),
+  );
+  const hydratedCloudServices = cloudServices.map((service) => ({
+    ...service,
+    image: service.image || previousServiceImages.get(service.id) || undefined,
+  }));
   console.info(`${LOG_PREFIX} cloud fetch completed`, {
-    cloudProducts: cloudProducts.length,
-    cloudServices: cloudServices.length,
+    cloudProducts: hydratedCloudProducts.length,
+    cloudServices: hydratedCloudServices.length,
     isSalesBusiness,
   });
 
-  if (cloudProducts.length > 0 || previousProducts.length === 0) {
+  if (hydratedCloudProducts.length > 0 || previousProducts.length === 0) {
     console.info(`${LOG_PREFIX} writing local products`, {
-      count: cloudProducts.length,
+      count: hydratedCloudProducts.length,
       replacingEmptyCache: previousProducts.length === 0,
     });
-    writeLocalProducts(cloudProducts);
+    writeLocalProducts(hydratedCloudProducts);
   } else {
     console.warn(`${LOG_PREFIX} product write skipped to avoid clearing cache`);
   }
@@ -99,12 +114,15 @@ export async function syncCatalogFromCloud(): Promise<CatalogSyncResult> {
       `${LOG_PREFIX} account type is Sales Business; clearing services`,
     );
     writeLocalServices([]);
-  } else if (cloudServices.length > 0 || previousServices.length === 0) {
+  } else if (
+    hydratedCloudServices.length > 0 ||
+    previousServices.length === 0
+  ) {
     console.info(`${LOG_PREFIX} writing local services`, {
-      count: cloudServices.length,
+      count: hydratedCloudServices.length,
       replacingEmptyCache: previousServices.length === 0,
     });
-    writeLocalServices(cloudServices);
+    writeLocalServices(hydratedCloudServices);
   } else {
     console.warn(`${LOG_PREFIX} service write skipped to avoid clearing cache`);
   }

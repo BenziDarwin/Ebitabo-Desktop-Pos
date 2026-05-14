@@ -22,13 +22,12 @@ function sanitizeStoredImage(image?: string): string | undefined {
   if (!normalized) return undefined;
 
   const lower = normalized.toLowerCase();
-  if (lower.startsWith("data:")) {
-    return undefined;
-  }
-
-  const looksLikeBase64Blob =
-    normalized.length > 256 && /^[a-z0-9+/=\s]+$/i.test(normalized);
-  if (looksLikeBase64Blob) {
+  if (
+    lower === "null" ||
+    lower === "undefined" ||
+    lower === "false" ||
+    lower === "none"
+  ) {
     return undefined;
   }
 
