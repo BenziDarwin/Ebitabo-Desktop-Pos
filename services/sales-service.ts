@@ -9,6 +9,10 @@ import { STORAGE_KEYS } from "@/lib/constants";
 import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
 import {
+  isSubscriptionExpired,
+  SUBSCRIPTION_EXPIRED_MESSAGE,
+} from "@/lib/subscription";
+import {
   readLocalProducts,
   readLocalProductClients,
   readLocalServiceClients,
@@ -327,6 +331,10 @@ export async function fetchBusinessClients(
 export async function createSaleFromCart(
   input: CreateSaleFromCartInput,
 ): Promise<unknown> {
+  if (isSubscriptionExpired(input.business.dateExpiry)) {
+    throw new Error(SUBSCRIPTION_EXPIRED_MESSAGE);
+  }
+
   const currencyId = toPositiveNumber(input.currencyId);
   const clientId = mapClientId(input.client);
   if (!clientId) {

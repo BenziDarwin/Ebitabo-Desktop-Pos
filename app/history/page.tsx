@@ -13,6 +13,10 @@ import {
   type DailySalesRecord,
 } from "@/services/history-reports-service";
 import { syncPendingTransactions } from "@/services/transaction-sync-service";
+import {
+  isSubscriptionExpired,
+  SUBSCRIPTION_EXPIRED_MESSAGE,
+} from "@/lib/subscription";
 import type { CompletedOrder } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -322,6 +326,12 @@ export default function HistoryPage() {
   const runPendingSync = useCallback(
     async (showToasts: boolean) => {
       if (isSyncingPending) return;
+      if (isSubscriptionExpired(business?.dateExpiry)) {
+        if (showToasts) {
+          toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
+        }
+        return;
+      }
       if (pendingCount === 0) {
         if (showToasts) {
           toast.info("No pending transactions to sync.");

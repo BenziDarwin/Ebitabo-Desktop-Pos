@@ -43,6 +43,7 @@ export function Receipt({
 
   const discountAmount =
     discountType === "amount" ? discount : subtotal * (discount / 100);
+
   const handlePrint = useReactToPrint({
     contentRef: printRef,
   });
@@ -51,17 +52,17 @@ export function Receipt({
     <div>
       <div
         ref={printRef}
-        className="bg-white p-6 text-sm font-mono"
+        className="bg-white p-6 text-[13px] leading-relaxed font-mono"
         style={{ width: "80mm" }}
       >
         {/* Header */}
         <div className="text-center border-b border-slate-300 pb-4 mb-4">
-          <h1 className="text-lg font-bold">EBTABO</h1>
-          <p className="text-xs text-slate-600">Point of Sale Receipt</p>
+          <h1 className="text-xl font-bold">EBTABO</h1>
+          <p className="text-sm text-slate-600">Point of Sale Receipt</p>
         </div>
 
         {/* Order Info */}
-        <div className="text-xs mb-4 pb-4 border-b border-slate-300">
+        <div className="text-sm mb-4 pb-4 border-b border-slate-300 space-y-1">
           {orderId && <p>Order ID: {orderId}</p>}
           {timestamp && (
             <p>
@@ -76,12 +77,15 @@ export function Receipt({
         {/* Items */}
         <div className="mb-4 pb-4 border-b border-slate-300">
           <div className="grid grid-cols-3 gap-2 mb-2 pb-2 border-b border-slate-200">
-            <div className="col-span-1 text-xs font-bold">Qty</div>
-            <div className="col-span-1 text-xs font-bold text-center">Item</div>
-            <div className="col-span-1 text-xs font-bold text-right">Total</div>
+            <div className="col-span-1 text-sm font-bold">Qty</div>
+            <div className="col-span-1 text-sm font-bold text-center">Item</div>
+            <div className="col-span-1 text-sm font-bold text-right">Total</div>
           </div>
           {items.map((item) => (
-            <div key={item.id} className="grid grid-cols-3 gap-2 text-xs mb-1">
+            <div
+              key={item.id}
+              className="grid grid-cols-3 gap-2 text-sm mb-2 last:mb-0"
+            >
               <div className="col-span-1">{formatQuantity(item.quantity)}</div>
               <div className="col-span-1">
                 <div>{item.name}</div>
@@ -97,7 +101,7 @@ export function Receipt({
         </div>
 
         {/* Totals */}
-        <div className="space-y-1 mb-4 pb-4 border-b border-slate-300 text-xs">
+        <div className="space-y-1 mb-4 pb-4 border-b border-slate-300 text-sm">
           <div className="flex justify-between">
             <span>Subtotal:</span>
             <span>{formatCurrency(subtotal, currency)}</span>
@@ -112,7 +116,7 @@ export function Receipt({
             <span>Tax:</span>
             <span>{formatCurrency(tax, currency)}</span>
           </div>
-          <div className="flex justify-between font-bold text-sm">
+          <div className="flex justify-between font-bold text-base">
             <span>Total:</span>
             <span>{formatCurrency(total, currency)}</span>
           </div>
@@ -120,21 +124,21 @@ export function Receipt({
 
         {/* Payment Method */}
         {paymentMethod && (
-          <div className="text-xs mb-4 pb-4 border-b border-slate-300">
+          <div className="text-sm mb-4 pb-4 border-b border-slate-300">
             <p>Payment: {paymentMethod}</p>
           </div>
         )}
 
         {/* Notes */}
         {notes && (
-          <div className="text-xs mb-4 pb-4 border-b border-slate-300">
+          <div className="text-sm mb-4 pb-4 border-b border-slate-300">
             <p className="font-bold mb-1">Notes:</p>
             <p className="whitespace-pre-wrap">{notes}</p>
           </div>
         )}
 
         {/* Footer */}
-        <div className="text-center text-xs text-slate-600">
+        <div className="text-center text-sm text-slate-600">
           <p>Thank you for your purchase!</p>
           <p>Please come again</p>
         </div>

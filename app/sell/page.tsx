@@ -51,6 +51,10 @@ import {
   formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
+import {
+  isSubscriptionExpired,
+  SUBSCRIPTION_EXPIRED_MESSAGE,
+} from "@/lib/subscription";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import type { Client, OrderDraft } from "@/lib/types";
@@ -235,6 +239,11 @@ export default function SellPage() {
   const handleCompletePayment = async () => {
     if (!business) {
       toast.error("Business details not loaded. Please login again.");
+      return;
+    }
+
+    if (isSubscriptionExpired(business.dateExpiry)) {
+      toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
       return;
     }
 

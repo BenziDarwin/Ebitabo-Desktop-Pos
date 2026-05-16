@@ -38,9 +38,14 @@ export function generateReceiptHtml({
 }: WebReceiptPrintData): string {
   const receiptNo = receiptNumber || `RCP-${Date.now()}`;
   const currencyText = currency || "";
+  const normalizedType = type.trim().toLowerCase();
+  const isSaleReceipt = normalizedType === "sale";
   const paidValue = amountPaid ?? total;
   const balanceValue = balance ?? total - paidValue;
+  const absoluteBalanceValue = Math.abs(balanceValue);
   const balanceLabel = balanceValue < 0 ? "Change" : "Balance";
+  const shouldShowPaymentSummary =
+    isSaleReceipt && (amountPaid !== undefined || balance !== undefined);
   const createdByText = createdBy?.trim();
   const logoSrc = business?.business_logo
     ? `data:image/png;base64,${business.business_logo}`
@@ -68,10 +73,10 @@ export function generateReceiptHtml({
       font-family: "Courier New", monospace;
       width: 80mm;
       background: #fff;
-      font-size: 12px;
-      line-height: 1.6;
+      font-size: 13px;
+      line-height: 1.65;
       padding: 4mm 4mm 12mm 4mm;
-      letter-spacing: 0.45px;
+      letter-spacing: 0.5px;
     }
 
     .receipt { width: 100%; }
@@ -92,28 +97,28 @@ export function generateReceiptHtml({
     }
 
     .company-name {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: 900;
       margin-bottom: 6px;
       letter-spacing: 0.6px;
     }
 
     .type {
-      font-size: 18px;
+      font-size: 19px;
       font-weight: 900;
       margin-bottom: 6px;
       letter-spacing: 0.6px;
     }
 
     .company-details {
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.7;
       font-weight: 800;
     }
 
     .receipt-info {
       margin-bottom: 10px;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 800;
     }
 
@@ -137,7 +142,7 @@ export function generateReceiptHtml({
     .items-table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 12px;
+      font-size: 13px;
       margin-bottom: 10px;
     }
 
@@ -162,7 +167,7 @@ export function generateReceiptHtml({
       border-top: 3px solid #000;
       padding-top: 8px;
       margin-top: 8px;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .total-row {
@@ -175,7 +180,7 @@ export function generateReceiptHtml({
       border-top: 3px solid #000;
       padding-top: 8px;
       margin-top: 8px;
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 900;
       letter-spacing: 0.7px;
     }
@@ -184,12 +189,12 @@ export function generateReceiptHtml({
       border-top: 3px dashed #000;
       margin-top: 12px;
       padding-top: 10px;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .balance-row {
       font-weight: 900;
-      font-size: 13px;
+      font-size: 14px;
     }
 
     .footer {
@@ -197,14 +202,14 @@ export function generateReceiptHtml({
       padding-top: 12px;
       border-top: 3px dashed #000;
       text-align: center;
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.7;
       font-weight: 900;
     }
 
     .footer strong {
       font-weight: 900;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     @page {
@@ -293,16 +298,12 @@ export function generateReceiptHtml({
     </div>
 
     ${
-      amountPaid !== undefined || balance !== undefined
+      shouldShowPaymentSummary
         ? `
           <div class="payment-section">
-            <div class="total-row">
-              <span>Paid</span>
-              <strong>${currencyText} ${paidValue.toLocaleString()}</strong>
-            </div>
             <div class="total-row balance-row">
               <span>${balanceLabel}</span>
-              <strong>${currencyText} ${Math.abs(balanceValue).toLocaleString()}</strong>
+              <strong>${currencyText} ${absoluteBalanceValue.toLocaleString()}</strong>
             </div>
           </div>
         `
