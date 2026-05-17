@@ -1,6 +1,6 @@
 {
   "name": "ebitabo_web",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "main": "electron/main.js",
   "private": true,
   "scripts": {

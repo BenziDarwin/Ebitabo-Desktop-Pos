@@ -168,8 +168,9 @@ export default function ProfilePage() {
         <Card className="p-8 border-red-200 bg-red-50">
           <h3 className="text-lg font-bold text-red-900 mb-4">Danger Zone</h3>
           <p className="text-sm text-red-800 mb-6">
-            Logging out clears local session keys and returns you to login.
-            Pending transactions should be synced first.
+            Logging out clears all local POS data (orders, history, drafts, and
+            cart) and returns you to login. Pending transactions should be
+            synced first.
           </p>
           <Button
             onClick={handleLogout}

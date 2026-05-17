@@ -207,22 +207,5 @@ export async function logoutSession(): Promise<void> {
     }
   }
 
-  Storage.clearKeys([
-    STORAGE_KEYS.apiKey,
-    STORAGE_KEYS.clientUrl,
-    STORAGE_KEYS.businessDetails,
-    STORAGE_KEYS.currencyDetails,
-    STORAGE_KEYS.userId,
-    STORAGE_KEYS.authCookies,
-    STORAGE_KEYS.user,
-    STORAGE_KEYS.catalogProducts,
-    STORAGE_KEYS.catalogServices,
-    STORAGE_KEYS.clientsProducts,
-    STORAGE_KEYS.clientsServices,
-    STORAGE_KEYS.catalogLastSyncedAt,
-    STORAGE_KEYS.cartState,
-    STORAGE_KEYS.orderDrafts,
-    STORAGE_KEYS.activeOrderDraftId,
-    STORAGE_KEYS.salesRecords,
-  ]);
+  Storage.clearKeys(Object.values(STORAGE_KEYS));
 }

@@ -1,16 +1,25 @@
 "use client";
 
 import React from "react";
-import { AuthProvider } from "@/provider/auth-provider";
+import { AuthProvider, useAuth } from "@/provider/auth-provider";
 import { CartProvider } from "@/provider/cart-provider";
 import { POSProvider } from "@/provider/pos-provider";
+
+function SessionScopedProviders({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user } = useAuth();
+  const sessionKey = isAuthenticated ? `auth-${user?.id ?? "active"}` : "guest";
+
+  return (
+    <CartProvider key={`cart-${sessionKey}`}>
+      <POSProvider key={`pos-${sessionKey}`}>{children}</POSProvider>
+    </CartProvider>
+  );
+}
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <CartProvider>
-        <POSProvider>{children}</POSProvider>
-      </CartProvider>
+      <SessionScopedProviders>{children}</SessionScopedProviders>
     </AuthProvider>
   );
 }
