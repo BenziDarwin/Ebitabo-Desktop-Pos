@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
 import { isSalesBusinessAccountType } from "@/lib/business-account-type";
@@ -13,16 +13,71 @@ import type { Product, Service } from "@/lib/types";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
 import { formatCurrency } from "@/lib/format-currency";
-import { formatQuantity, toPositiveQuantity } from "@/lib/quantity";
+import { formatQuantity } from "@/lib/quantity";
 import { resolveImageUri } from "@/lib/resolve-image-uri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { ShoppingCart, Search } from "lucide-react";
 import productFallbackImage from "@/assets/images/empty/product.png";
 import serviceFallbackImage from "@/assets/images/empty/service.png";
 import { toast } from "sonner";
 
 const LOG_PREFIX = "[CatalogSync]";
+
+function normalizeIdentifier(value?: string): string {
+  return (value ?? "")
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeAlphanumeric(value?: string): string {
+  return normalizeIdentifier(value).replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeDigits(value?: string): string {
+  return normalizeIdentifier(value).replace(/\D/g, "");
+}
+
+function trimLeadingZeros(value: string): string {
+  const trimmed = value.replace(/^0+/, "");
+  return trimmed || "0";
+}
+
+function isExactScanMatch(scanValue: string, candidate?: string): boolean {
+  if (!scanValue || !candidate) return false;
+
+  const normalizedScan = normalizeIdentifier(scanValue);
+  const normalizedCandidate = normalizeIdentifier(candidate);
+  if (!normalizedScan || !normalizedCandidate) return false;
+  if (normalizedScan === normalizedCandidate) return true;
+
+  const alphanumericScan = normalizeAlphanumeric(scanValue);
+  const alphanumericCandidate = normalizeAlphanumeric(candidate);
+  if (
+    alphanumericScan &&
+    alphanumericCandidate &&
+    alphanumericScan === alphanumericCandidate
+  ) {
+    return true;
+  }
+
+  const digitsScan = normalizeDigits(scanValue);
+  const digitsCandidate = normalizeDigits(candidate);
+  if (digitsScan && digitsCandidate) {
+    return trimLeadingZeros(digitsScan) === trimLeadingZeros(digitsCandidate);
+  }
+
+  return false;
+}
 
 type CatalogImageKind = "product" | "service";
 
@@ -87,12 +142,14 @@ interface ProductCatalogProps {
   onSelectProduct?: (product: Product) => void;
   refreshKey?: number;
   isSyncingCatalog?: boolean;
+  quickMode?: boolean;
 }
 
 export function ProductCatalog({
   onSelectProduct,
   refreshKey = 0,
   isSyncingCatalog = false,
+  quickMode = false,
 }: ProductCatalogProps) {
   const { addToCart, cart } = usePOS();
   const { currency, business } = useAuth();
@@ -102,6 +159,11 @@ export function ProductCatalog({
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [clientUrl, setClientUrl] = useState<string | null>(null);
+  const activeSearchRequestRef = useRef(0);
+  const lastAutoScanNeedleRef = useRef<string | null>(null);
+  const autoScanResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const isSalesBusiness = isSalesBusinessAccountType(business?.account_type);
   const resolvedSelectedCategory =
     isSalesBusiness && selectedCategory === "Services"
@@ -121,6 +183,17 @@ export function ProductCatalog({
         isSalesBusiness,
         products: productsData.length,
         services: servicesData.length,
+        productsWithBarcode: productsData.filter((product) =>
+          Boolean(product.barcode?.trim()),
+        ).length,
+        sampleProduct: productsData[0]
+          ? {
+              id: productsData[0].id,
+              name: productsData[0].name,
+              sku: productsData[0].sku,
+              barcode: productsData[0].barcode,
+            }
+          : null,
       });
 
       if (!isMounted) return;
@@ -136,30 +209,139 @@ export function ProductCatalog({
     };
   }, [isSalesBusiness, refreshKey]);
 
+  useEffect(
+    () => () => {
+      if (autoScanResetTimerRef.current) {
+        clearTimeout(autoScanResetTimerRef.current);
+      }
+    },
+    [],
+  );
+
   const handleSearch = async (query: string) => {
+    const requestId = ++activeSearchRequestRef.current;
     setSearchQuery(query);
+    const trimmedQuery = query.trim();
+    const normalizedNeedle = normalizeIdentifier(trimmedQuery);
     console.info(`${LOG_PREFIX} ProductCatalog search`, {
       query,
       selectedCategory: resolvedSelectedCategory,
       isSalesBusiness,
     });
-    if (query.trim()) {
+    if (trimmedQuery) {
+      const allProducts = await getProducts();
+      if (requestId !== activeSearchRequestRef.current) return;
+      const exactBarcodeMatches = allProducts.filter((product) =>
+        isExactScanMatch(normalizedNeedle, product.barcode),
+      );
+      const exactSkuMatches =
+        exactBarcodeMatches.length === 0
+          ? allProducts.filter((product) =>
+              isExactScanMatch(normalizedNeedle, product.sku),
+            )
+          : [];
+      console.info(`${LOG_PREFIX} ProductCatalog exact scan matches`, {
+        query: trimmedQuery,
+        normalizedNeedle,
+        exactBarcodeMatches: exactBarcodeMatches.length,
+        exactSkuMatches: exactSkuMatches.length,
+        sample:
+          (exactBarcodeMatches[0] ?? exactSkuMatches[0])
+            ? {
+                id: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.id,
+                name: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.name,
+                barcode: (exactBarcodeMatches[0] ?? exactSkuMatches[0])
+                  ?.barcode,
+                sku: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.sku,
+              }
+            : null,
+      });
+
+      if (exactBarcodeMatches.length === 1) {
+        const isDuplicateScan =
+          lastAutoScanNeedleRef.current === normalizedNeedle;
+        if (isDuplicateScan) {
+          return;
+        }
+        lastAutoScanNeedleRef.current = normalizedNeedle;
+        if (autoScanResetTimerRef.current) {
+          clearTimeout(autoScanResetTimerRef.current);
+        }
+        autoScanResetTimerRef.current = setTimeout(() => {
+          lastAutoScanNeedleRef.current = null;
+          autoScanResetTimerRef.current = null;
+        }, 350);
+        handleAddToCart(exactBarcodeMatches[0], { fromScanner: true });
+        setSearchQuery("");
+        const resetProducts = await getProducts();
+        if (requestId !== activeSearchRequestRef.current) return;
+        const resetServices = isSalesBusiness ? [] : await getServices();
+        if (requestId !== activeSearchRequestRef.current) return;
+        setProducts(resetProducts);
+        setServices(resetServices);
+        return;
+      }
+
+      if (exactBarcodeMatches.length > 1) {
+        setProducts(exactBarcodeMatches);
+        setServices([]);
+        return;
+      }
+
+      if (exactSkuMatches.length === 1) {
+        const isDuplicateScan =
+          lastAutoScanNeedleRef.current === normalizedNeedle;
+        if (isDuplicateScan) {
+          return;
+        }
+        lastAutoScanNeedleRef.current = normalizedNeedle;
+        if (autoScanResetTimerRef.current) {
+          clearTimeout(autoScanResetTimerRef.current);
+        }
+        autoScanResetTimerRef.current = setTimeout(() => {
+          lastAutoScanNeedleRef.current = null;
+          autoScanResetTimerRef.current = null;
+        }, 350);
+        handleAddToCart(exactSkuMatches[0], { fromScanner: true });
+        setSearchQuery("");
+        const resetProducts = await getProducts();
+        if (requestId !== activeSearchRequestRef.current) return;
+        const resetServices = isSalesBusiness ? [] : await getServices();
+        if (requestId !== activeSearchRequestRef.current) return;
+        setProducts(resetProducts);
+        setServices(resetServices);
+        return;
+      }
+
+      if (exactSkuMatches.length > 1) {
+        setProducts(exactSkuMatches);
+        setServices([]);
+        return;
+      }
+
       const productResults = await searchProducts(query);
+      if (requestId !== activeSearchRequestRef.current) return;
       const serviceResults = isSalesBusiness
         ? []
         : (await getServices()).filter((service) =>
-            service.name.toLowerCase().includes(query.trim().toLowerCase()),
+            service.name.toLowerCase().includes(trimmedQuery.toLowerCase()),
           );
+      if (requestId !== activeSearchRequestRef.current) return;
       console.info(`${LOG_PREFIX} ProductCatalog search results`, {
         query,
         products: productResults.length,
         services: serviceResults.length,
+        matchedBarcodes: productResults.filter((product) =>
+          normalizeIdentifier(product.barcode).includes(normalizedNeedle),
+        ).length,
       });
       setProducts(productResults);
       setServices(serviceResults);
     } else {
       const productsData = await getProducts();
+      if (requestId !== activeSearchRequestRef.current) return;
       const servicesData = isSalesBusiness ? [] : await getServices();
+      if (requestId !== activeSearchRequestRef.current) return;
       console.info(`${LOG_PREFIX} ProductCatalog search reset`, {
         products: productsData.length,
         services: servicesData.length,
@@ -169,13 +351,16 @@ export function ProductCatalog({
     }
   };
 
-  const handleAddToCart = (product: Product) => {
+  const handleAddToCart = (
+    product: Product,
+    options?: { fromScanner?: boolean },
+  ) => {
     if (product.stock <= 0) {
       toast.error("Out of stock");
       return;
     }
 
-    const addedQuantity = toPositiveQuantity(Math.min(1, product.stock), 1);
+    const addedQuantity = options?.fromScanner ? 1 : Math.min(1, product.stock);
 
     const existingQuantity = cart.find(
       (entry) => entry.productId === product.id,
@@ -232,6 +417,30 @@ export function ProductCatalog({
         ? services
         : [],
   };
+  const quickModeRows = [
+    ...products.map((product) => ({
+      id: `product-${product.id}`,
+      name: product.name,
+      type: "Product" as const,
+      category: product.category || "Uncategorized",
+      barcode: product.barcode ?? "",
+      price: product.price,
+      stockLabel: `${formatQuantity(product.stock)} in stock`,
+      canAdd: product.stock > 0,
+      onAdd: () => handleAddToCart(product),
+    })),
+    ...services.map((service) => ({
+      id: `service-${service.id}`,
+      name: service.name,
+      type: "Service" as const,
+      category: "Service",
+      barcode: "",
+      price: service.price,
+      stockLabel: "Available",
+      canAdd: true,
+      onAdd: () => handleAddServiceToCart(service),
+    })),
+  ].sort((left, right) => left.name.localeCompare(right.name));
 
   return (
     <div className="flex flex-col h-full">
@@ -240,7 +449,11 @@ export function ProductCatalog({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
-            placeholder="Search products..."
+            placeholder={
+              quickMode
+                ? "Search products or services..."
+                : "Search products..."
+            }
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
             className="pl-10"
@@ -248,24 +461,26 @@ export function ProductCatalog({
         </div>
 
         {/* Category Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2">
-          {categories.map((cat) => (
-            <button
-              key={cat}
-              onClick={() => {
-                setSelectedCategory(cat);
-                setSearchQuery("");
-              }}
-              className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
-                resolvedSelectedCategory === cat
-                  ? "bg-blue-600 text-white"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-              }`}
-            >
-              {cat}
-            </button>
-          ))}
-        </div>
+        {!quickMode && (
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {categories.map((cat) => (
+              <button
+                key={cat}
+                onClick={() => {
+                  setSelectedCategory(cat);
+                  setSearchQuery("");
+                }}
+                className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
+                  resolvedSelectedCategory === cat
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Products/Services Grid */}
@@ -276,6 +491,64 @@ export function ProductCatalog({
               {isSyncingCatalog ? "Syncing catalog..." : "Loading..."}
             </p>
           </div>
+        ) : quickMode && !searchQuery.trim() ? (
+          <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-slate-300 bg-slate-50">
+            <p className="text-slate-500 text-sm">
+              Scan a barcode or search to load items
+            </p>
+          </div>
+        ) : quickMode ? (
+          quickModeRows.length === 0 ? (
+            <div className="flex items-center justify-center h-32">
+              <p className="text-slate-500">No items found</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-slate-50">
+                    <TableHead>Item</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Barcode</TableHead>
+                    <TableHead>Price</TableHead>
+                    <TableHead>Stock</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {quickModeRows.map((row) => (
+                    <TableRow key={row.id}>
+                      <TableCell className="max-w-[280px]">
+                        <p className="truncate font-medium text-slate-900">
+                          {row.name}
+                        </p>
+                        <p className="text-xs text-slate-500 truncate">
+                          {row.category}
+                        </p>
+                      </TableCell>
+                      <TableCell>{row.type}</TableCell>
+                      <TableCell>{row.barcode || "-"}</TableCell>
+                      <TableCell>
+                        {formatCurrency(row.price, currency)}
+                      </TableCell>
+                      <TableCell>{row.stockLabel}</TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          onClick={row.onAdd}
+                          disabled={!row.canAdd}
+                          size="sm"
+                          className="h-8 bg-blue-600 hover:bg-blue-700"
+                        >
+                          <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+                          Add
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )
         ) : displayedItems.products.length === 0 &&
           displayedItems.services.length === 0 ? (
           <div className="flex items-center justify-center h-32">

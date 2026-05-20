@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
+import { useQuickMode } from "@/provider/quick-mode-provider";
 import { completeOrder } from "@/services/order-service";
 import { syncCatalogFromCloud } from "@/services/catalog-service";
 import {
@@ -70,6 +71,7 @@ const PAYMENT_METHODS: SalePaymentMethod[] = [
 
 export default function SellPage() {
   const { user, business, currency, isReady, isAuthenticated } = useAuth();
+  const { isQuickMode } = useQuickMode();
   const {
     cart,
     cartSubtotal,
@@ -423,12 +425,15 @@ export default function SellPage() {
 
   return (
     <POSLayout currentPage="sell">
-      <div className="h-[calc(100vh-120px)] flex flex-col lg:flex-row gap-4 p-4 bg-slate-50">
+      <div
+        className={`h-[calc(100vh-120px)] flex flex-col lg:flex-row gap-4 p-4 bg-slate-50`}
+      >
         {/* Product Catalog */}
         <div className="flex-1 bg-white rounded-lg border border-slate-200 shadow-sm flex flex-col min-w-0 lg:h-auto h-1/2">
           <ProductCatalog
             refreshKey={catalogRefreshKey}
             isSyncingCatalog={isCatalogSyncing}
+            quickMode={isQuickMode}
           />
         </div>
 
@@ -438,6 +443,7 @@ export default function SellPage() {
             onCheckout={handleCheckout}
             onSaveDraft={handleSaveDraft}
             checkoutDisabled={cart.length === 0}
+            quickMode={isQuickMode}
           />
         </div>
       </div>

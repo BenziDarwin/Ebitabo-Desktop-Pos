@@ -1,9 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatCurrency, getCurrencyMarker } from "@/lib/format-currency";
 import {
   formatQuantity,
@@ -16,21 +26,33 @@ import {
   getLocalProductStockMap,
   resolveMaxAllowedQuantity,
 } from "@/services/cart-stock-service";
-import { ShoppingCart, Trash2, Plus, Minus } from "lucide-react";
+import {
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  FileText,
+  History,
+} from "lucide-react";
+import { getOrderHistory } from "@/services/history-service";
+import type { CompletedOrder } from "@/lib/types";
 import { toast } from "sonner";
 
 interface CartSummaryProps {
   onCheckout: () => void;
   onSaveDraft: () => void;
   checkoutDisabled?: boolean;
+  quickMode?: boolean;
 }
 
 export function CartSummary({
   onCheckout,
   onSaveDraft,
   checkoutDisabled = false,
+  quickMode = false,
 }: CartSummaryProps) {
-  const { currency } = useAuth();
+  const router = useRouter();
+  const { currency, user } = useAuth();
   const {
     cart,
     removeFromCart,
@@ -42,7 +64,48 @@ export function CartSummary({
     discount,
     discountType,
     setDiscount,
+    orderDrafts,
+    loadOrderDraft,
   } = usePOS();
+  const [showDraftsDialog, setShowDraftsDialog] = useState(false);
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
+  const [historyOrders, setHistoryOrders] = useState<CompletedOrder[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    if (!showHistoryDialog) return;
+
+    let isMounted = true;
+    const loadHistoryOrders = async () => {
+      setIsLoadingHistory(true);
+      try {
+        const orders = await getOrderHistory(60);
+        if (!isMounted) return;
+        const scopedOrders = user?.id
+          ? orders.filter((order) => order.userId === user.id)
+          : orders;
+        const sortedOrders = [...scopedOrders].sort(
+          (left, right) =>
+            new Date(right.completedAt).getTime() -
+            new Date(left.completedAt).getTime(),
+        );
+        setHistoryOrders(sortedOrders);
+      } catch (error) {
+        console.error("Failed to load history orders", error);
+        toast.error("Failed to load history orders");
+      } finally {
+        if (isMounted) {
+          setIsLoadingHistory(false);
+        }
+      }
+    };
+
+    void loadHistoryOrders();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showHistoryDialog, user?.id]);
 
   const handleDiscountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseFloat(e.target.value) || 0;
@@ -86,6 +149,12 @@ export function CartSummary({
         `Only ${formatStockQuantity(maxAllowed)} units available for ${item.name}.`,
       );
     }
+  };
+
+  const handleLoadDraftFromQuickMode = (draftId: string) => {
+    loadOrderDraft(draftId);
+    setShowDraftsDialog(false);
+    toast.success("Draft loaded");
   };
 
   return (
@@ -262,7 +331,174 @@ export function CartSummary({
             Create Sale
           </Button>
         </div>
+
+        {quickMode && (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              onClick={() => setShowDraftsDialog(true)}
+              variant="outline"
+              className="h-9 text-xs"
+            >
+              <FileText className="h-3.5 w-3.5 mr-1" />
+              Drafts
+            </Button>
+            <Button
+              onClick={() => setShowHistoryDialog(true)}
+              variant="outline"
+              className="h-9 text-xs"
+            >
+              <History className="h-3.5 w-3.5 mr-1" />
+              History
+            </Button>
+          </div>
+        )}
       </div>
+
+      <Dialog open={showDraftsDialog} onOpenChange={setShowDraftsDialog}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Drafts</DialogTitle>
+            <DialogDescription>
+              Continue any saved draft directly from quick mode.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60vh] pr-2">
+            {orderDrafts.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                No drafts found.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {orderDrafts.map((draft) => (
+                  <div
+                    key={draft.id}
+                    className="rounded-lg border border-slate-200 p-3 bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {draft.notes || `Draft ${draft.id.slice(-8)}`}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(draft.updatedAt).toLocaleDateString()}{" "}
+                          {new Date(draft.updatedAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 h-8"
+                        onClick={() => handleLoadDraftFromQuickMode(draft.id)}
+                      >
+                        Load
+                      </Button>
+                    </div>
+
+                    <div className="mt-2 space-y-1">
+                      {draft.items.slice(0, 4).map((item) => (
+                        <p
+                          key={`${draft.id}-${item.id}`}
+                          className="text-xs text-slate-700"
+                        >
+                          {item.name} x{formatQuantity(item.quantity)}
+                        </p>
+                      ))}
+                      {draft.items.length > 4 && (
+                        <p className="text-xs text-slate-500">
+                          +{draft.items.length - 4} more
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-2 text-xs font-semibold text-blue-700">
+                      Total: {formatCurrency(draft.total, currency)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => router.push("/orders")}>
+              Open full drafts page
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>History</DialogTitle>
+            <DialogDescription>
+              Recent completed sales from this device.
+            </DialogDescription>
+          </DialogHeader>
+
+          <ScrollArea className="max-h-[60vh] pr-2">
+            {isLoadingHistory ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                Loading history...
+              </div>
+            ) : historyOrders.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                No history found.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {historyOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="rounded-lg border border-slate-200 p-3 bg-slate-50"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {order.notes || `Sale ${order.id.slice(-8)}`}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {new Date(order.completedAt).toLocaleDateString()}{" "}
+                          {new Date(order.completedAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                      <span className="text-[11px] rounded-full bg-white border border-slate-200 px-2 py-0.5 text-slate-600">
+                        {order.sync.status}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 space-y-1">
+                      {order.items.slice(0, 4).map((item) => (
+                        <p
+                          key={`${order.id}-${item.id}`}
+                          className="text-xs text-slate-700"
+                        >
+                          {item.name} x{formatQuantity(item.quantity)}
+                        </p>
+                      ))}
+                      {order.items.length > 4 && (
+                        <p className="text-xs text-slate-500">
+                          +{order.items.length - 4} more
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="mt-2 text-xs font-semibold text-blue-700">
+                      Total: {formatCurrency(order.total, currency)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
+
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => router.push("/history")}>
+              Open full history page
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

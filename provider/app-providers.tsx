@@ -4,6 +4,7 @@ import React from "react";
 import { AuthProvider, useAuth } from "@/provider/auth-provider";
 import { CartProvider } from "@/provider/cart-provider";
 import { POSProvider } from "@/provider/pos-provider";
+import { QuickModeProvider } from "@/provider/quick-mode-provider";
 
 function SessionScopedProviders({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, user } = useAuth();
@@ -19,7 +20,9 @@ function SessionScopedProviders({ children }: { children: React.ReactNode }) {
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
-      <SessionScopedProviders>{children}</SessionScopedProviders>
+      <QuickModeProvider>
+        <SessionScopedProviders>{children}</SessionScopedProviders>
+      </QuickModeProvider>
     </AuthProvider>
   );
 }

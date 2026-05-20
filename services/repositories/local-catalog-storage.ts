@@ -34,6 +34,12 @@ function sanitizeStoredImage(image?: string): string | undefined {
   return normalized;
 }
 
+function sanitizeStoredBarcode(value?: string): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim();
+  return normalized ? normalized : undefined;
+}
+
 function serializeProduct(product: Product): SerializedProduct {
   return {
     ...product,
@@ -43,8 +49,11 @@ function serializeProduct(product: Product): SerializedProduct {
 }
 
 function deserializeProduct(product: SerializedProduct): Product {
+  const sanitizedBarcode = sanitizeStoredBarcode(product.barcode);
+  const fallbackBarcode = sanitizeStoredBarcode(product.sku);
   return {
     ...product,
+    barcode: sanitizedBarcode ?? fallbackBarcode,
     createdAt: new Date(product.createdAt),
   };
 }

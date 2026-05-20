@@ -37,6 +37,7 @@ function searchWithinProducts(products: Product[], query: string): Product[] {
   return products.filter(
     (product) =>
       product.name.toLowerCase().includes(needle) ||
+      (product.barcode ?? "").toLowerCase().includes(needle) ||
       product.sku.toLowerCase().includes(needle) ||
       product.category.toLowerCase().includes(needle),
   );

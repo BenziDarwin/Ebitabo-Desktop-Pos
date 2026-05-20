@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   clientsProducts: "clients_products",
   clientsServices: "clients_services",
   catalogLastSyncedAt: "catalog_last_synced_at",
+  sellQuickMode: "sell_quick_mode",
   cartState: "cart_state",
   orderDrafts: "order_drafts",
   activeOrderDraftId: "active_order_draft_id",

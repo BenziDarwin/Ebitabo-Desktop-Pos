@@ -104,6 +104,18 @@ function mapProduct(record: Record<string, unknown>): Product {
       [record.sku, record.default_code, record.product_code],
       id,
     ),
+    barcode: firstNonEmptyString(
+      [
+        record.barcode,
+        record.bar_code,
+        record.ean13,
+        record.ean,
+        record.upc,
+        record.default_code,
+        record.sku,
+      ],
+      "",
+    ),
     category: firstNonEmptyString(
       [record.category, record.category_name],
       "Products",
@@ -170,6 +182,10 @@ export class RemoteCatalogRepository implements CatalogRepository {
       fields: [
         "id",
         "name",
+        "sku",
+        "default_code",
+        "product_code",
+        "barcode",
         "quantityAtHand",
         "unitofMeasure",
         "costPrice",
@@ -188,10 +204,15 @@ export class RemoteCatalogRepository implements CatalogRepository {
       pageNo,
       rawRecords: records.length,
       mappedProducts: mapped.length,
+      mappedWithBarcode: mapped.filter((product) =>
+        Boolean(product.barcode?.trim()),
+      ).length,
       sample: mapped[0]
         ? {
             id: mapped[0].id,
             name: mapped[0].name,
+            barcode: mapped[0].barcode,
+            sku: mapped[0].sku,
             stock: mapped[0].stock,
             price: mapped[0].price,
           }
@@ -260,6 +281,7 @@ export class RemoteCatalogRepository implements CatalogRepository {
     return products.filter(
       (product) =>
         product.name.toLowerCase().includes(needle) ||
+        (product.barcode ?? "").toLowerCase().includes(needle) ||
         product.sku.toLowerCase().includes(needle) ||
         product.category.toLowerCase().includes(needle),
     );

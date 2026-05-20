@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/provider/auth-provider";
+import { useQuickMode } from "@/provider/quick-mode-provider";
 import { useRouter } from "next/navigation";
 import { ProtectedRoute } from "./protected-route";
 import { Button } from "@/components/ui/button";
@@ -14,18 +15,25 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Zap } from "lucide-react";
 import Link from "next/link";
 import { getPendingTransactionsSummary } from "@/services/pending-transactions-service";
 
 interface POSLayoutProps {
   children: React.ReactNode;
   currentPage: "sell" | "orders" | "history" | "profile";
+  hidePrimaryNav?: boolean;
 }
 
-export function POSLayout({ children, currentPage }: POSLayoutProps) {
+export function POSLayout({
+  children,
+  currentPage,
+  hidePrimaryNav = false,
+}: POSLayoutProps) {
   const { user, business, currency, logout } = useAuth();
+  const { isQuickMode, toggleQuickMode } = useQuickMode();
   const router = useRouter();
+  const shouldHidePrimaryNav = hidePrimaryNav || isQuickMode;
 
   const handleLogout = async () => {
     const pendingSummary = getPendingTransactionsSummary();
@@ -73,21 +81,23 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
             </Link>
 
             {/* Navigation */}
-            <nav className="hidden md:flex gap-1">
-              {navItems.map((item) => (
-                <Link
-                  key={item.page}
-                  href={item.href}
-                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                    currentPage === item.page
-                      ? "bg-blue-50 text-blue-600"
-                      : "text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
+            {!shouldHidePrimaryNav && (
+              <nav className="hidden md:flex gap-1">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.page}
+                    href={item.href}
+                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+                      currentPage === item.page
+                        ? "bg-blue-50 text-blue-600"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </nav>
+            )}
 
             {/* User Menu */}
             <div className="flex items-center gap-4">
@@ -99,6 +109,21 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
                   {business?.account_type || user?.role || "POS User"}
                 </p>
               </div>
+
+              <Button
+                type="button"
+                variant={isQuickMode ? "default" : "outline"}
+                size="sm"
+                onClick={toggleQuickMode}
+                className={
+                  isQuickMode
+                    ? "bg-amber-500 hover:bg-amber-600 text-white"
+                    : ""
+                }
+              >
+                <Zap className="w-4 h-4" />
+                <span className="hidden lg:inline">Quick mode</span>
+              </Button>
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -127,21 +152,23 @@ export function POSLayout({ children, currentPage }: POSLayoutProps) {
           </div>
 
           {/* Mobile Navigation */}
-          <nav className="md:hidden border-t border-slate-200 flex gap-1 px-6 py-2 overflow-x-auto">
-            {navItems.map((item) => (
-              <Link
-                key={item.page}
-                href={item.href}
-                className={`px-3 py-1 rounded text-sm font-medium whitespace-nowrap transition-colors ${
-                  currentPage === item.page
-                    ? "bg-blue-50 text-blue-600"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          {!shouldHidePrimaryNav && (
+            <nav className="md:hidden border-t border-slate-200 flex gap-1 px-6 py-2 overflow-x-auto">
+              {navItems.map((item) => (
+                <Link
+                  key={item.page}
+                  href={item.href}
+                  className={`px-3 py-1 rounded text-sm font-medium whitespace-nowrap transition-colors ${
+                    currentPage === item.page
+                      ? "bg-blue-50 text-blue-600"
+                      : "text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </header>
 
         {/* Main Content */}
