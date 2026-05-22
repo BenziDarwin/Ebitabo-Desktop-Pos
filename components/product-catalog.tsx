@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
 import { isSalesBusinessAccountType } from "@/lib/business-account-type";
@@ -32,51 +32,17 @@ import { toast } from "sonner";
 
 const LOG_PREFIX = "[CatalogSync]";
 
-function normalizeIdentifier(value?: string): string {
-  return (value ?? "")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .trim()
-    .toLowerCase();
-}
-
-function normalizeAlphanumeric(value?: string): string {
-  return normalizeIdentifier(value).replace(/[^a-z0-9]/g, "");
-}
-
-function normalizeDigits(value?: string): string {
-  return normalizeIdentifier(value).replace(/\D/g, "");
-}
-
-function trimLeadingZeros(value: string): string {
-  const trimmed = value.replace(/^0+/, "");
-  return trimmed || "0";
+function normalizeBarcodeIdentifier(value?: string): string {
+  return (value ?? "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
 }
 
 function isExactScanMatch(scanValue: string, candidate?: string): boolean {
   if (!scanValue || !candidate) return false;
 
-  const normalizedScan = normalizeIdentifier(scanValue);
-  const normalizedCandidate = normalizeIdentifier(candidate);
+  const normalizedScan = normalizeBarcodeIdentifier(scanValue);
+  const normalizedCandidate = normalizeBarcodeIdentifier(candidate);
   if (!normalizedScan || !normalizedCandidate) return false;
-  if (normalizedScan === normalizedCandidate) return true;
-
-  const alphanumericScan = normalizeAlphanumeric(scanValue);
-  const alphanumericCandidate = normalizeAlphanumeric(candidate);
-  if (
-    alphanumericScan &&
-    alphanumericCandidate &&
-    alphanumericScan === alphanumericCandidate
-  ) {
-    return true;
-  }
-
-  const digitsScan = normalizeDigits(scanValue);
-  const digitsCandidate = normalizeDigits(candidate);
-  if (digitsScan && digitsCandidate) {
-    return trimLeadingZeros(digitsScan) === trimLeadingZeros(digitsCandidate);
-  }
-
-  return false;
+  return normalizedScan === normalizedCandidate;
 }
 
 type CatalogImageKind = "product" | "service";
@@ -160,6 +126,7 @@ export function ProductCatalog({
   const [isLoading, setIsLoading] = useState(true);
   const [clientUrl, setClientUrl] = useState<string | null>(null);
   const activeSearchRequestRef = useRef(0);
+  const previousQuickModeRef = useRef(quickMode);
   const lastAutoScanNeedleRef = useRef<string | null>(null);
   const autoScanResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
@@ -218,126 +185,42 @@ export function ProductCatalog({
     [],
   );
 
-  const handleSearch = async (query: string) => {
-    const requestId = ++activeSearchRequestRef.current;
-    setSearchQuery(query);
-    const trimmedQuery = query.trim();
-    const normalizedNeedle = normalizeIdentifier(trimmedQuery);
-    console.info(`${LOG_PREFIX} ProductCatalog search`, {
-      query,
-      selectedCategory: resolvedSelectedCategory,
-      isSalesBusiness,
-    });
-    if (trimmedQuery) {
-      const allProducts = await getProducts();
-      if (requestId !== activeSearchRequestRef.current) return;
-      const exactBarcodeMatches = allProducts.filter((product) =>
-        isExactScanMatch(normalizedNeedle, product.barcode),
-      );
-      const exactSkuMatches =
-        exactBarcodeMatches.length === 0
-          ? allProducts.filter((product) =>
-              isExactScanMatch(normalizedNeedle, product.sku),
+  const loadCatalogForQuery = useCallback(
+    async (query: string, requestId: number) => {
+      const trimmedQuery = query.trim();
+      if (trimmedQuery) {
+        const normalizedNeedle = normalizeBarcodeIdentifier(trimmedQuery);
+        const isLikelyBarcodeLookup =
+          quickMode && /^\d+$/.test(normalizedNeedle);
+        const productResults = isLikelyBarcodeLookup
+          ? (await getProducts()).filter((product) =>
+              isExactScanMatch(normalizedNeedle, product.barcode),
             )
-          : [];
-      console.info(`${LOG_PREFIX} ProductCatalog exact scan matches`, {
-        query: trimmedQuery,
-        normalizedNeedle,
-        exactBarcodeMatches: exactBarcodeMatches.length,
-        exactSkuMatches: exactSkuMatches.length,
-        sample:
-          (exactBarcodeMatches[0] ?? exactSkuMatches[0])
-            ? {
-                id: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.id,
-                name: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.name,
-                barcode: (exactBarcodeMatches[0] ?? exactSkuMatches[0])
-                  ?.barcode,
-                sku: (exactBarcodeMatches[0] ?? exactSkuMatches[0])?.sku,
-              }
-            : null,
-      });
+          : await searchProducts(query);
+        if (requestId !== activeSearchRequestRef.current) return;
+        const serviceResults = isLikelyBarcodeLookup
+          ? []
+          : isSalesBusiness
+            ? []
+            : (await getServices()).filter((service) =>
+                service.name.toLowerCase().includes(trimmedQuery.toLowerCase()),
+              );
+        if (requestId !== activeSearchRequestRef.current) return;
 
-      if (exactBarcodeMatches.length === 1) {
-        const isDuplicateScan =
-          lastAutoScanNeedleRef.current === normalizedNeedle;
-        if (isDuplicateScan) {
-          return;
-        }
-        lastAutoScanNeedleRef.current = normalizedNeedle;
-        if (autoScanResetTimerRef.current) {
-          clearTimeout(autoScanResetTimerRef.current);
-        }
-        autoScanResetTimerRef.current = setTimeout(() => {
-          lastAutoScanNeedleRef.current = null;
-          autoScanResetTimerRef.current = null;
-        }, 350);
-        handleAddToCart(exactBarcodeMatches[0], { fromScanner: true });
-        setSearchQuery("");
-        const resetProducts = await getProducts();
-        if (requestId !== activeSearchRequestRef.current) return;
-        const resetServices = isSalesBusiness ? [] : await getServices();
-        if (requestId !== activeSearchRequestRef.current) return;
-        setProducts(resetProducts);
-        setServices(resetServices);
+        console.info(`${LOG_PREFIX} ProductCatalog search results`, {
+          query,
+          isLikelyBarcodeLookup,
+          products: productResults.length,
+          services: serviceResults.length,
+          matchedBarcodes: productResults.filter((product) =>
+            isExactScanMatch(normalizedNeedle, product.barcode),
+          ).length,
+        });
+        setProducts(productResults);
+        setServices(serviceResults);
         return;
       }
 
-      if (exactBarcodeMatches.length > 1) {
-        setProducts(exactBarcodeMatches);
-        setServices([]);
-        return;
-      }
-
-      if (exactSkuMatches.length === 1) {
-        const isDuplicateScan =
-          lastAutoScanNeedleRef.current === normalizedNeedle;
-        if (isDuplicateScan) {
-          return;
-        }
-        lastAutoScanNeedleRef.current = normalizedNeedle;
-        if (autoScanResetTimerRef.current) {
-          clearTimeout(autoScanResetTimerRef.current);
-        }
-        autoScanResetTimerRef.current = setTimeout(() => {
-          lastAutoScanNeedleRef.current = null;
-          autoScanResetTimerRef.current = null;
-        }, 350);
-        handleAddToCart(exactSkuMatches[0], { fromScanner: true });
-        setSearchQuery("");
-        const resetProducts = await getProducts();
-        if (requestId !== activeSearchRequestRef.current) return;
-        const resetServices = isSalesBusiness ? [] : await getServices();
-        if (requestId !== activeSearchRequestRef.current) return;
-        setProducts(resetProducts);
-        setServices(resetServices);
-        return;
-      }
-
-      if (exactSkuMatches.length > 1) {
-        setProducts(exactSkuMatches);
-        setServices([]);
-        return;
-      }
-
-      const productResults = await searchProducts(query);
-      if (requestId !== activeSearchRequestRef.current) return;
-      const serviceResults = isSalesBusiness
-        ? []
-        : (await getServices()).filter((service) =>
-            service.name.toLowerCase().includes(trimmedQuery.toLowerCase()),
-          );
-      if (requestId !== activeSearchRequestRef.current) return;
-      console.info(`${LOG_PREFIX} ProductCatalog search results`, {
-        query,
-        products: productResults.length,
-        services: serviceResults.length,
-        matchedBarcodes: productResults.filter((product) =>
-          normalizeIdentifier(product.barcode).includes(normalizedNeedle),
-        ).length,
-      });
-      setProducts(productResults);
-      setServices(serviceResults);
-    } else {
       const productsData = await getProducts();
       if (requestId !== activeSearchRequestRef.current) return;
       const servicesData = isSalesBusiness ? [] : await getServices();
@@ -348,6 +231,82 @@ export function ProductCatalog({
       });
       setProducts(productsData);
       setServices(servicesData);
+    },
+    [isSalesBusiness, quickMode],
+  );
+
+  useEffect(() => {
+    const wasQuickMode = previousQuickModeRef.current;
+    previousQuickModeRef.current = quickMode;
+
+    if (!quickMode && wasQuickMode) {
+      const requestId = ++activeSearchRequestRef.current;
+      void loadCatalogForQuery(searchQuery, requestId);
+    }
+  }, [loadCatalogForQuery, quickMode, searchQuery]);
+
+  const handleSearch = async (query: string) => {
+    const requestId = ++activeSearchRequestRef.current;
+    setSearchQuery(query);
+    const trimmedQuery = query.trim();
+    const normalizedNeedle = normalizeBarcodeIdentifier(trimmedQuery);
+    const isNumericBarcodeInput = quickMode && /^\d+$/.test(normalizedNeedle);
+    console.info(`${LOG_PREFIX} ProductCatalog search`, {
+      query,
+      selectedCategory: resolvedSelectedCategory,
+      isSalesBusiness,
+      isNumericBarcodeInput,
+    });
+    if (trimmedQuery) {
+      const allProducts = await getProducts();
+      if (requestId !== activeSearchRequestRef.current) return;
+      const exactBarcodeMatches = allProducts.filter((product) =>
+        isExactScanMatch(normalizedNeedle, product.barcode),
+      );
+      console.info(`${LOG_PREFIX} ProductCatalog exact scan matches`, {
+        query: trimmedQuery,
+        normalizedNeedle,
+        exactBarcodeMatches: exactBarcodeMatches.length,
+        isNumericBarcodeInput,
+        sample: exactBarcodeMatches[0]
+          ? {
+              id: exactBarcodeMatches[0].id,
+              name: exactBarcodeMatches[0].name,
+              barcode: exactBarcodeMatches[0].barcode,
+              sku: exactBarcodeMatches[0].sku,
+            }
+          : null,
+      });
+
+      if (isNumericBarcodeInput) {
+        if (exactBarcodeMatches.length === 1) {
+          const isDuplicateScan =
+            lastAutoScanNeedleRef.current === normalizedNeedle;
+          if (isDuplicateScan) {
+            return;
+          }
+          lastAutoScanNeedleRef.current = normalizedNeedle;
+          if (autoScanResetTimerRef.current) {
+            clearTimeout(autoScanResetTimerRef.current);
+          }
+          autoScanResetTimerRef.current = setTimeout(() => {
+            lastAutoScanNeedleRef.current = null;
+            autoScanResetTimerRef.current = null;
+          }, 350);
+          handleAddToCart(exactBarcodeMatches[0], { fromScanner: true });
+          setSearchQuery("");
+          await loadCatalogForQuery("", requestId);
+          return;
+        }
+
+        setProducts(exactBarcodeMatches);
+        setServices([]);
+        return;
+      }
+
+      await loadCatalogForQuery(query, requestId);
+    } else {
+      await loadCatalogForQuery("", requestId);
     }
   };
 
@@ -455,7 +414,14 @@ export function ProductCatalog({
                 : "Search products..."
             }
             value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
+            onChange={(e) => {
+              void handleSearch(e.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (!quickMode || event.key !== "Enter") return;
+              event.preventDefault();
+              void handleSearch(searchQuery);
+            }}
             className="pl-10"
           />
         </div>
@@ -468,7 +434,7 @@ export function ProductCatalog({
                 key={cat}
                 onClick={() => {
                   setSelectedCategory(cat);
-                  setSearchQuery("");
+                  void handleSearch("");
                 }}
                 className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap transition-colors ${
                   resolvedSelectedCategory === cat

@@ -1,20 +1,13 @@
 import { STORAGE_KEYS } from "@/lib/constants";
-import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
-import { toProxyPath } from "@/services/repositories/proxy-path";
+import {
+  buildRemoteEndpointUrl,
+  normalizeClientUrl,
+} from "@/services/repositories/remote-endpoint";
 
 export interface DailySalesRecord {
   date_sale: string;
   sum_amount_sale: number;
-}
-
-function normalizeClientUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  const withProtocol = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  return withProtocol.replace(/\/+$/, "");
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -65,25 +58,24 @@ export async function getSalesRecordByUserId(
     `model=${encodeURIComponent("business_reports.business_summary_userreport")}`,
     `user_id=${encodeURIComponent(resolvedUserId)}`,
   ];
-  if (isElectronRenderer()) {
-    queryParts.push(`target=${encodeURIComponent(normalizedClientUrl)}`);
-  }
 
   try {
-    const response = await fetch(
-      toProxyPath("/send_request", queryParts.join("&")),
-      {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          "api-key": apiKey,
-          "x-ebitabo-client-url": normalizedClientUrl,
-        },
-        body: JSON.stringify({
-          function: "get_daily_sales",
-        }),
-      },
+    const endpointUrl = buildRemoteEndpointUrl(
+      normalizedClientUrl,
+      "/send_request",
+      queryParts.join("&"),
     );
+    const response = await fetch(endpointUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": apiKey,
+        "x-ebitabo-client-url": normalizedClientUrl,
+      },
+      body: JSON.stringify({
+        function: "get_daily_sales",
+      }),
+    });
 
     const raw = (await response.text()).trim();
     if (!response.ok || !raw || /^<!doctype html>|^<html/i.test(raw)) {

@@ -4,10 +4,9 @@ import type {
   CurrencyDetails,
 } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
-import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
 import { authenticateUserUseCase } from "@/services/container";
-import { toProxyPath } from "@/services/repositories/proxy-path";
+import { buildRemoteEndpointUrl } from "@/services/repositories/remote-endpoint";
 import { sendRequestModel } from "@/services/repositories/send-request";
 
 function normalizeClientUrl(url: string): string {
@@ -191,11 +190,12 @@ export async function logoutSession(): Promise<void> {
   const cookies = Storage.getItem(STORAGE_KEYS.authCookies);
 
   if (clientUrl && cookies) {
-    const proxyQuery = isElectronRenderer()
-      ? `target=${encodeURIComponent(clientUrl)}`
-      : undefined;
+    const endpointUrl = buildRemoteEndpointUrl(
+      clientUrl,
+      "/web/session/logout",
+    );
     try {
-      await fetch(toProxyPath("/web/session/logout", proxyQuery), {
+      await fetch(endpointUrl, {
         method: "GET",
         headers: {
           Cookie: cookies,

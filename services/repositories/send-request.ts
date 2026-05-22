@@ -1,7 +1,9 @@
 import { STORAGE_KEYS } from "@/lib/constants";
-import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
-import { toProxyPath } from "@/services/repositories/proxy-path";
+import {
+  buildRemoteEndpointUrl,
+  normalizeClientUrl,
+} from "@/services/repositories/remote-endpoint";
 
 const LOG_PREFIX = "[CatalogSync]";
 
@@ -13,15 +15,6 @@ interface SendRequestPayload {
   page_no?: number;
   limit?: number;
   [key: string]: unknown;
-}
-
-function normalizeClientUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  const withProtocol = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  return withProtocol.replace(/\/+$/, "");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,13 +96,14 @@ export async function sendRequestModel(
   if (overrides?.query) {
     queryParts.push(overrides.query);
   }
-  if (isElectronRenderer()) {
-    queryParts.push(`target=${encodeURIComponent(clientUrl)}`);
-  }
-  const proxyUrl = toProxyPath("/send_request", queryParts.join("&"));
+  const endpointUrl = buildRemoteEndpointUrl(
+    clientUrl,
+    "/send_request",
+    queryParts.join("&"),
+  );
   console.info(`${LOG_PREFIX} sendRequest start`, {
     model,
-    proxyUrl,
+    endpointUrl,
     clientUrl,
     pageNo: payload.page_no,
     limit: payload.limit,
@@ -117,7 +111,7 @@ export async function sendRequestModel(
 
   let response: Response;
   try {
-    response = await fetch(proxyUrl, {
+    response = await fetch(endpointUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

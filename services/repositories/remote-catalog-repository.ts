@@ -182,9 +182,6 @@ export class RemoteCatalogRepository implements CatalogRepository {
       fields: [
         "id",
         "name",
-        "sku",
-        "default_code",
-        "product_code",
         "barcode",
         "quantityAtHand",
         "unitofMeasure",

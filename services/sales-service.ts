@@ -6,7 +6,6 @@ import type {
 } from "@/core/entities";
 import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import { STORAGE_KEYS } from "@/lib/constants";
-import { isElectronRenderer } from "@/lib/runtime";
 import { Storage } from "@/lib/storage";
 import {
   isSubscriptionExpired,
@@ -19,7 +18,10 @@ import {
   writeLocalProductClients,
   writeLocalServiceClients,
 } from "@/services/repositories/local-catalog-storage";
-import { toProxyPath } from "@/services/repositories/proxy-path";
+import {
+  buildRemoteEndpointUrl,
+  normalizeClientUrl,
+} from "@/services/repositories/remote-endpoint";
 import { sendRequestModel } from "@/services/repositories/send-request";
 
 export type { SalePaymentMethod } from "@/core/entities";
@@ -93,15 +95,6 @@ interface CreateSaleFromCartInput {
 }
 
 const CREATE_SALE_FIELDS = ["id", "client_id", "reference"];
-
-function normalizeClientUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  const withProtocol = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  return withProtocol.replace(/\/+$/, "");
-}
 
 function isHtmlResponse(text: string): boolean {
   return /^<!doctype html>|^<html/i.test(text.trim());
@@ -247,12 +240,12 @@ async function postSaleModel(
     throw new Error("Missing API session. Please login again.");
   }
 
-  const queryParts = [`model=${encodeURIComponent(model)}`];
-  if (isElectronRenderer()) {
-    queryParts.push(`target=${encodeURIComponent(clientUrl)}`);
-  }
-  const proxyUrl = toProxyPath("/send_request", queryParts.join("&"));
-  const response = await fetch(proxyUrl, {
+  const endpointUrl = buildRemoteEndpointUrl(
+    clientUrl,
+    "/send_request",
+    `model=${encodeURIComponent(model)}`,
+  );
+  const response = await fetch(endpointUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

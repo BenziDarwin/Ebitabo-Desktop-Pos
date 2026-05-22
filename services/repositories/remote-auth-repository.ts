@@ -1,16 +1,9 @@
 import type { AuthSession, LoginCredentials, User } from "@/core/entities";
-import { isElectronRenderer } from "@/lib/runtime";
 import type { AuthRepository } from "@/core/repositories";
-import { toProxyPath } from "@/services/repositories/proxy-path";
-
-function normalizeClientUrl(url: string): string {
-  const trimmed = url.trim();
-  if (!trimmed) return trimmed;
-  const withProtocol = /^https?:\/\//i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
-  return withProtocol.replace(/\/+$/, "");
-}
+import {
+  buildRemoteEndpointUrl,
+  normalizeClientUrl,
+} from "@/services/repositories/remote-endpoint";
 
 function isHtmlResponse(text: string): boolean {
   return /^<!doctype html>|^<html/i.test(text.trim());
@@ -24,11 +17,9 @@ export class RemoteAuthRepository implements AuthRepository {
     if (!clientUrl) return null;
 
     let response: Response;
-    const proxyQuery = isElectronRenderer()
-      ? `target=${encodeURIComponent(clientUrl)}`
-      : undefined;
+    const endpointUrl = buildRemoteEndpointUrl(clientUrl, "/ebtabo_api/");
     try {
-      response = await fetch(toProxyPath("/ebtabo_api", proxyQuery), {
+      response = await fetch(endpointUrl, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",

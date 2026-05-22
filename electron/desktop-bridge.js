@@ -36,6 +36,18 @@ function writeJson(res, statusCode, body) {
   res.end(JSON.stringify(body));
 }
 
+function tryWriteJson(res, statusCode, body) {
+  if (res.destroyed || res.writableEnded) {
+    return false;
+  }
+  if (res.headersSent) {
+    return false;
+  }
+
+  writeJson(res, statusCode, body);
+  return true;
+}
+
 function getHeaderValue(value) {
   if (Array.isArray(value)) {
     return value[0];
@@ -51,6 +63,38 @@ function normalizeProxyTarget(target) {
     return trimmed;
   }
   return `https://${trimmed}`;
+}
+
+function normalizePathname(pathname) {
+  const normalized = pathname || "/";
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function trimTrailingSlash(pathname) {
+  const normalized = normalizePathname(pathname);
+  if (normalized === "/") return "";
+  return normalized.replace(/\/+$/, "");
+}
+
+function resolveUpstreamUrl(resolvedTarget, forwardedPath, upstreamSearch) {
+  const baseUrl = new URL(resolvedTarget);
+  const normalizedForwardedPath = normalizePathname(forwardedPath);
+  const basePath = trimTrailingSlash(baseUrl.pathname);
+
+  let resolvedPath = normalizedForwardedPath;
+  if (
+    basePath &&
+    normalizedForwardedPath !== "/" &&
+    normalizedForwardedPath !== basePath &&
+    !normalizedForwardedPath.startsWith(`${basePath}/`)
+  ) {
+    resolvedPath = `${basePath}${normalizedForwardedPath}`;
+  }
+
+  const requestUrl = new URL(baseUrl.origin);
+  requestUrl.pathname = resolvedPath;
+  requestUrl.search = upstreamSearch ? `?${upstreamSearch}` : "";
+  return requestUrl;
 }
 
 function sanitizeForwardHeaders(rawHeaders, upstreamHost, originalHost) {
@@ -157,7 +201,7 @@ function proxyToBackend(req, res, apiProxyTarget) {
     headerTarget || queryTarget || normalizeProxyTarget(apiProxyTarget);
 
   if (!resolvedTarget) {
-    writeJson(res, 503, {
+    tryWriteJson(res, 503, {
       error: "API proxy target is not configured",
       hint: "Set EBITABO_API_PROXY_TARGET to enable /api forwarding.",
     });
@@ -174,9 +218,10 @@ function proxyToBackend(req, res, apiProxyTarget) {
       : requestUrl.pathname.replace(/^\/api(?=\/)/, "");
   const normalizedForwardedPath =
     forwardedPath === "/ebtabo_api" ? "/ebtabo_api/" : forwardedPath;
-  const upstreamUrl = new URL(
-    `${normalizedForwardedPath}${upstreamSearch ? `?${upstreamSearch}` : ""}`,
+  const upstreamUrl = resolveUpstreamUrl(
     resolvedTarget,
+    normalizedForwardedPath,
+    upstreamSearch,
   );
   const transport = upstreamUrl.protocol === "https:" ? https : http;
 
@@ -209,12 +254,16 @@ function proxyToBackend(req, res, apiProxyTarget) {
       target: resolvedTarget,
       path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
     });
-    writeJson(res, 502, {
+    const wroteError = tryWriteJson(res, 502, {
       error: "Failed to reach API upstream",
       details: error.message,
       code: error.code || null,
       target: resolvedTarget,
     });
+
+    if (!wroteError && !res.destroyed && !res.writableEnded) {
+      res.destroy();
+    }
   });
 
   req.pipe(upstreamReq);

@@ -50,10 +50,9 @@ function serializeProduct(product: Product): SerializedProduct {
 
 function deserializeProduct(product: SerializedProduct): Product {
   const sanitizedBarcode = sanitizeStoredBarcode(product.barcode);
-  const fallbackBarcode = sanitizeStoredBarcode(product.sku);
   return {
     ...product,
-    barcode: sanitizedBarcode ?? fallbackBarcode,
+    barcode: sanitizedBarcode,
     createdAt: new Date(product.createdAt),
   };
 }
