@@ -111,6 +111,7 @@ export default function SellPage() {
   const isSyncInFlight = useRef(false);
   const hasPendingSync = useRef(false);
   const pendingSyncReason = useRef<string | null>(null);
+  const isCreateSaleInFlight = useRef(false);
 
   const runCatalogSync = async (reason: string) => {
     console.info(`${LOG_PREFIX} runCatalogSync requested`, {
@@ -247,164 +248,170 @@ export default function SellPage() {
   };
 
   const handleCompletePayment = async () => {
-    const resolvedBusiness = await resolveBusinessForSale({
-      currentBusiness: business,
-      refreshBusinessDetails: fetchBusinessDetails,
-    });
-
-    if (!resolvedBusiness) {
-      toast.error("Business details not loaded. Please login again.");
-      return;
-    }
-
-    if (isSubscriptionExpired(resolvedBusiness.dateExpiry)) {
-      toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
-      return;
-    }
-
-    if (!selectedClient) {
-      toast.error("Please select a client before creating a sale.");
-      return;
-    }
-
-    const stockIssue = findFirstInsufficientStock(
-      cart,
-      getLocalProductStockMap(),
-    );
-    if (stockIssue) {
-      toast.error(
-        `${stockIssue.itemName} exceeds stock. Available: ${formatStockQuantity(stockIssue.available)}, requested: ${formatQuantity(stockIssue.requested)}.`,
-      );
-      return;
-    }
-
-    if (
-      resolvedPaymentMethod === "Advance" &&
-      (selectedClient.advancedAmount ?? 0) < cartTotal
-    ) {
-      toast.error("Client advance amount is not enough for this sale.");
-      return;
-    }
-
-    const userId = user?.id ?? resolvedBusiness.userId;
-    if (!userId) {
-      toast.error("No active user session. Please login again.");
-      return;
-    }
-
-    const resolvedAmountPaid = resolveLatestAmountPaid();
-    setAmountPaid(resolvedAmountPaid);
-
-    const resolvedCurrencyId = Number(
-      currency?.id ?? resolvedBusiness.currency_id ?? 0,
-    );
-    const balanceDue = Math.max(0, cartTotal - resolvedAmountPaid);
-    const change = Math.max(0, resolvedAmountPaid - cartTotal);
-
+    if (isCreateSaleInFlight.current) return;
+    isCreateSaleInFlight.current = true;
     setIsCreatingSale(true);
-    const isOffline =
-      typeof navigator !== "undefined" && navigator.onLine === false;
-    let remoteCreateFailed = isOffline;
-    let remoteCreateError: string | null = isOffline
-      ? "No internet connection."
-      : null;
-    let remoteSaleId: number | null = null;
-
-    if (!isOffline) {
-      try {
-        const remoteResponse = await createSaleFromCart({
-          business: resolvedBusiness,
-          cart,
-          client: selectedClient,
-          paymentMethod: resolvedPaymentMethod,
-          amountPaid: resolvedAmountPaid,
-          currencyId: resolvedCurrencyId,
-          subtotal: cartSubtotal,
-          discount,
-          discountType,
-          createdBy: user?.name || user?.username,
-        });
-        remoteSaleId = extractRemoteSaleId(remoteResponse);
-      } catch (error) {
-        remoteCreateFailed = true;
-        remoteCreateError =
-          error instanceof Error
-            ? error.message
-            : "Cloud create-sale failed. Please sync later.";
-        console.error("createSaleFromCart failed", error);
-      }
-    }
-
-    const checkoutDraft: OrderDraft = {
-      id: `sale-${Date.now()}`,
-      items: cart,
-      client: selectedClient || undefined,
-      subtotal: cartSubtotal,
-      tax: cartTax,
-      total: cartTotal,
-      discount,
-      discountType,
-      notes: orderNotes,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      userId,
-    };
 
     try {
-      await completeOrder(checkoutDraft, userId, {
-        change,
-        payments: [
-          {
-            method: resolvedPaymentMethod,
-            amount: resolvedAmountPaid,
-            date: new Date().toISOString(),
-          },
-        ],
-        sync: {
-          status: remoteCreateFailed ? "pending" : "synced",
-          remoteSaleId,
-          syncedAt: remoteCreateFailed ? null : new Date(),
-          lastSyncError: remoteCreateFailed ? remoteCreateError : null,
-          paymentMethod: resolvedPaymentMethod,
-          amountPaid: resolvedAmountPaid,
-          currencyId: resolvedCurrencyId,
-          businessAccountType: resolvedBusiness.account_type,
-          businessUserId: resolvedBusiness.userId,
-          createdBy: user?.name || user?.username,
-        },
+      const resolvedBusiness = await resolveBusinessForSale({
+        currentBusiness: business,
+        refreshBusinessDetails: fetchBusinessDetails,
       });
-    } catch (error) {
-      console.error("Failed to persist local sale", error);
-      toast.error("Failed to save sale locally. Please try again.");
-      setIsCreatingSale(false);
-      return;
-    }
 
-    if (remoteCreateFailed) {
-      toast.warning("Sale saved locally as pending. Sync it from History.");
-    } else {
-      if (balanceDue > 0) {
-        toast.success(
-          `Sale created on credit. Balance due: ${formatCurrency(balanceDue, currency)}`,
-        );
-      } else {
-        toast.success(
-          `Sale created successfully. Change: ${formatCurrency(change, currency)}`,
-        );
+      if (!resolvedBusiness) {
+        toast.error("Business details not loaded. Please login again.");
+        return;
       }
-    }
 
-    if (activeDraftId) {
-      deleteOrderDraft(activeDraftId);
-    }
+      if (isSubscriptionExpired(resolvedBusiness.dateExpiry)) {
+        toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
+        return;
+      }
 
-    setShowPaymentDialog(false);
-    setIsClientPickerOpen(false);
-    clearCart();
-    setAmountPaid(0);
-    setPaymentMethod("Cash");
-    setClientSearch("");
-    setIsCreatingSale(false);
+      if (!selectedClient) {
+        toast.error("Please select a client before creating a sale.");
+        return;
+      }
+
+      const stockIssue = findFirstInsufficientStock(
+        cart,
+        getLocalProductStockMap(),
+      );
+      if (stockIssue) {
+        toast.error(
+          `${stockIssue.itemName} exceeds stock. Available: ${formatStockQuantity(stockIssue.available)}, requested: ${formatQuantity(stockIssue.requested)}.`,
+        );
+        return;
+      }
+
+      if (
+        resolvedPaymentMethod === "Advance" &&
+        (selectedClient.advancedAmount ?? 0) < cartTotal
+      ) {
+        toast.error("Client advance amount is not enough for this sale.");
+        return;
+      }
+
+      const userId = user?.id ?? resolvedBusiness.userId;
+      if (!userId) {
+        toast.error("No active user session. Please login again.");
+        return;
+      }
+
+      const resolvedAmountPaid = resolveLatestAmountPaid();
+      setAmountPaid(resolvedAmountPaid);
+
+      const resolvedCurrencyId = Number(
+        currency?.id ?? resolvedBusiness.currency_id ?? 0,
+      );
+      const balanceDue = Math.max(0, cartTotal - resolvedAmountPaid);
+      const change = Math.max(0, resolvedAmountPaid - cartTotal);
+
+      const isOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      let remoteCreateFailed = isOffline;
+      let remoteCreateError: string | null = isOffline
+        ? "No internet connection."
+        : null;
+      let remoteSaleId: number | null = null;
+
+      if (!isOffline) {
+        try {
+          const remoteResponse = await createSaleFromCart({
+            business: resolvedBusiness,
+            cart,
+            client: selectedClient,
+            paymentMethod: resolvedPaymentMethod,
+            amountPaid: resolvedAmountPaid,
+            currencyId: resolvedCurrencyId,
+            subtotal: cartSubtotal,
+            discount,
+            discountType,
+            createdBy: user?.name || user?.username,
+          });
+          remoteSaleId = extractRemoteSaleId(remoteResponse);
+        } catch (error) {
+          remoteCreateFailed = true;
+          remoteCreateError =
+            error instanceof Error
+              ? error.message
+              : "Cloud create-sale failed. Please sync later.";
+          console.error("createSaleFromCart failed", error);
+        }
+      }
+
+      const checkoutDraft: OrderDraft = {
+        id: `sale-${Date.now()}`,
+        items: cart,
+        client: selectedClient || undefined,
+        subtotal: cartSubtotal,
+        tax: cartTax,
+        total: cartTotal,
+        discount,
+        discountType,
+        notes: orderNotes,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        userId,
+      };
+
+      try {
+        await completeOrder(checkoutDraft, userId, {
+          change,
+          payments: [
+            {
+              method: resolvedPaymentMethod,
+              amount: resolvedAmountPaid,
+              date: new Date().toISOString(),
+            },
+          ],
+          sync: {
+            status: remoteCreateFailed ? "pending" : "synced",
+            remoteSaleId,
+            syncedAt: remoteCreateFailed ? null : new Date(),
+            lastSyncError: remoteCreateFailed ? remoteCreateError : null,
+            paymentMethod: resolvedPaymentMethod,
+            amountPaid: resolvedAmountPaid,
+            currencyId: resolvedCurrencyId,
+            businessAccountType: resolvedBusiness.account_type,
+            businessUserId: resolvedBusiness.userId,
+            createdBy: user?.name || user?.username,
+          },
+        });
+      } catch (error) {
+        console.error("Failed to persist local sale", error);
+        toast.error("Failed to save sale locally. Please try again.");
+        return;
+      }
+
+      if (remoteCreateFailed) {
+        toast.warning("Sale saved locally as pending. Sync it from History.");
+      } else {
+        if (balanceDue > 0) {
+          toast.success(
+            `Sale created on credit. Balance due: ${formatCurrency(balanceDue, currency)}`,
+          );
+        } else {
+          toast.success(
+            `Sale created successfully. Change: ${formatCurrency(change, currency)}`,
+          );
+        }
+      }
+
+      if (activeDraftId) {
+        deleteOrderDraft(activeDraftId);
+      }
+
+      setShowPaymentDialog(false);
+      setIsClientPickerOpen(false);
+      clearCart();
+      setAmountPaid(0);
+      setPaymentMethod("Cash");
+      setClientSearch("");
+    } finally {
+      isCreateSaleInFlight.current = false;
+      setIsCreatingSale(false);
+    }
   };
 
   const handleSaveDraft = () => {

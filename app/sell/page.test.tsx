@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import SellPage from "@/app/sell/page";
 import { SUBSCRIPTION_EXPIRED_MESSAGE } from "@/lib/subscription";
 import { toast } from "sonner";
+import { completeOrder } from "@/services/order-service";
 import {
   createSaleFromCart,
   fetchBusinessClients,
@@ -11,6 +12,7 @@ import {
 
 const useAuthMock = vi.fn();
 const usePOSMock = vi.fn();
+const useQuickModeMock = vi.fn();
 
 vi.mock("@/provider/auth-provider", () => ({
   useAuth: () => useAuthMock(),
@@ -21,7 +23,7 @@ vi.mock("@/provider/pos-provider", () => ({
 }));
 
 vi.mock("@/provider/quick-mode-provider", () => ({
-  useQuickMode: () => ({ isQuickMode: false }),
+  useQuickMode: () => useQuickModeMock(),
 }));
 
 vi.mock("@/components/pos-layout", () => ({
@@ -79,6 +81,7 @@ vi.mock("sonner", () => ({
 describe("SellPage create-sale safeguards", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    useQuickModeMock.mockReturnValue({ isQuickMode: false });
 
     const expiredBusiness = {
       id: 12,
@@ -149,7 +152,7 @@ describe("SellPage create-sale safeguards", () => {
     });
   });
 
-  it("refreshes business details before each attempt and blocks expired subscriptions", async () => {
+  it("ignores duplicate in-flight clicks and blocks expired subscriptions", async () => {
     render(<SellPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Checkout" }));
@@ -165,12 +168,82 @@ describe("SellPage create-sale safeguards", () => {
       const auth = useAuthMock.mock.results[0]?.value as {
         fetchBusinessDetails: ReturnType<typeof vi.fn>;
       };
-      expect(auth.fetchBusinessDetails).toHaveBeenCalledTimes(2);
+      expect(auth.fetchBusinessDetails).toHaveBeenCalledTimes(1);
     });
 
     expect(fetchBusinessClients).toHaveBeenCalled();
     expect(getCachedBusinessClients).toHaveBeenCalled();
     expect(createSaleFromCart).not.toHaveBeenCalled();
     expect(toast.error).toHaveBeenCalledWith(SUBSCRIPTION_EXPIRED_MESSAGE);
+  });
+
+  it.each([
+    { quickMode: false, label: "normal mode" },
+    { quickMode: true, label: "quick mode" },
+  ])("creates one sale for a double click in $label", async ({ quickMode }) => {
+    const activeBusiness = {
+      id: 12,
+      name: "Test Business",
+      account_type: "Sales Business",
+      currency_id: 1,
+      business_logo: null,
+      dateExpiry: "2099-01-01T00:00:00.000Z",
+      phone_numbers: [],
+      contact_details: null,
+      company_name: null,
+      company_address: null,
+      company_phone: null,
+      company_email: null,
+      apiUrl: "https://example.com",
+      userId: "9",
+    };
+
+    const refreshBusinessDetails = vi.fn(async () => activeBusiness);
+
+    useQuickModeMock.mockReturnValue({ isQuickMode: quickMode });
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "9",
+        name: "Cashier",
+        username: "cashier",
+      },
+      business: activeBusiness,
+      currency: {
+        id: 1,
+        name: "USD",
+        symbol: "$",
+      },
+      isReady: true,
+      isAuthenticated: true,
+      fetchBusinessDetails: refreshBusinessDetails,
+    });
+
+    let resolveRemoteCreate: ((value: unknown) => void) | null = null;
+    const remoteCreatePromise = new Promise((resolve) => {
+      resolveRemoteCreate = resolve;
+    });
+    vi.mocked(createSaleFromCart).mockReturnValue(remoteCreatePromise);
+
+    render(<SellPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Checkout" }));
+
+    const createSaleButton = await screen.findByRole("button", {
+      name: "Create Sale",
+    });
+
+    fireEvent.click(createSaleButton);
+    fireEvent.click(createSaleButton);
+
+    await waitFor(() => {
+      expect(refreshBusinessDetails).toHaveBeenCalledTimes(1);
+      expect(createSaleFromCart).toHaveBeenCalledTimes(1);
+    });
+
+    resolveRemoteCreate?.({});
+
+    await waitFor(() => {
+      expect(completeOrder).toHaveBeenCalledTimes(1);
+    });
   });
 });

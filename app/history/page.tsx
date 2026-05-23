@@ -226,6 +226,7 @@ export default function HistoryPage() {
   );
   const [showOrderDetails, setShowOrderDetails] = useState(false);
   const hasAutoSyncedOnEntry = useRef(false);
+  const isPendingSyncInFlight = useRef(false);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -326,76 +327,73 @@ export default function HistoryPage() {
 
   const runPendingSync = useCallback(
     async (showToasts: boolean) => {
-      if (isSyncingPending) return;
-
-      const resolvedBusiness = await resolveBusinessForSale({
-        currentBusiness: business,
-        refreshBusinessDetails: fetchBusinessDetails,
-      });
-
-      if (isSubscriptionExpired(resolvedBusiness?.dateExpiry)) {
-        if (showToasts) {
-          toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
-        }
-        return;
-      }
-      if (pendingCount === 0) {
-        if (showToasts) {
-          toast.info("No pending transactions to sync.");
-        }
-        return;
-      }
-      if (typeof navigator !== "undefined" && navigator.onLine === false) {
-        if (showToasts) {
-          toast.error("You are offline. Reconnect and try syncing again.");
-        }
-        return;
-      }
-
-      setIsSyncingPending(true);
+      if (isPendingSyncInFlight.current) return;
+      isPendingSyncInFlight.current = true;
       try {
-        const result = await syncPendingTransactions({
-          business: resolvedBusiness ?? business,
-          createdBy: user?.name || user?.username,
+        const resolvedBusiness = await resolveBusinessForSale({
+          currentBusiness: business,
+          refreshBusinessDetails: fetchBusinessDetails,
         });
-        await loadData();
 
-        if (!showToasts) {
+        if (isSubscriptionExpired(resolvedBusiness?.dateExpiry)) {
+          if (showToasts) {
+            toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
+          }
+          return;
+        }
+        if (pendingCount === 0) {
+          if (showToasts) {
+            toast.info("No pending transactions to sync.");
+          }
+          return;
+        }
+        if (typeof navigator !== "undefined" && navigator.onLine === false) {
+          if (showToasts) {
+            toast.error("You are offline. Reconnect and try syncing again.");
+          }
           return;
         }
 
-        if (result.attempted === 0) {
-          toast.info("No pending transactions were found.");
-        } else if (result.failed === 0) {
-          toast.success(
-            `Synced ${result.synced} pending transaction${result.synced === 1 ? "" : "s"}.`,
-          );
-        } else if (result.synced > 0) {
-          toast.warning(
-            `Synced ${result.synced}, but ${result.failed} transaction${result.failed === 1 ? "" : "s"} still pending.`,
-          );
-        } else {
-          toast.error(
-            "Could not sync pending transactions. Check network/API.",
-          );
-        }
-      } catch (error) {
-        console.error("Failed to sync pending transactions", error);
-        if (showToasts) {
-          toast.error("Failed to sync pending transactions.");
+        setIsSyncingPending(true);
+        try {
+          const result = await syncPendingTransactions({
+            business: resolvedBusiness ?? business,
+            createdBy: user?.name || user?.username,
+          });
+          await loadData();
+
+          if (!showToasts) {
+            return;
+          }
+
+          if (result.attempted === 0) {
+            toast.info("No pending transactions were found.");
+          } else if (result.failed === 0) {
+            toast.success(
+              `Synced ${result.synced} pending transaction${result.synced === 1 ? "" : "s"}.`,
+            );
+          } else if (result.synced > 0) {
+            toast.warning(
+              `Synced ${result.synced}, but ${result.failed} transaction${result.failed === 1 ? "" : "s"} still pending.`,
+            );
+          } else {
+            toast.error(
+              "Could not sync pending transactions. Check network/API.",
+            );
+          }
+        } catch (error) {
+          console.error("Failed to sync pending transactions", error);
+          if (showToasts) {
+            toast.error("Failed to sync pending transactions.");
+          }
+        } finally {
+          setIsSyncingPending(false);
         }
       } finally {
-        setIsSyncingPending(false);
+        isPendingSyncInFlight.current = false;
       }
     },
-    [
-      business,
-      fetchBusinessDetails,
-      isSyncingPending,
-      loadData,
-      pendingCount,
-      user,
-    ],
+    [business, fetchBusinessDetails, loadData, pendingCount, user],
   );
 
   const handleSyncPending = () => {

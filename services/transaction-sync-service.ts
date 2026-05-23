@@ -20,6 +20,9 @@ interface SyncPendingTransactionsOptions {
   createdBy?: string;
 }
 
+let syncPendingTransactionsInFlight: Promise<SyncPendingTransactionsResult> | null =
+  null;
+
 function isOffline(): boolean {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
@@ -93,83 +96,95 @@ function markSynced(
 export async function syncPendingTransactions(
   options: SyncPendingTransactionsOptions = {},
 ): Promise<SyncPendingTransactionsResult> {
-  const result: SyncPendingTransactionsResult = {
-    attempted: 0,
-    synced: 0,
-    failed: 0,
-    skipped: 0,
-  };
+  if (syncPendingTransactionsInFlight) {
+    return syncPendingTransactionsInFlight;
+  }
 
-  if (isOffline()) {
+  syncPendingTransactionsInFlight = (async () => {
+    const result: SyncPendingTransactionsResult = {
+      attempted: 0,
+      synced: 0,
+      failed: 0,
+      skipped: 0,
+    };
+
+    if (isOffline()) {
+      return result;
+    }
+
+    const records = readLocalSalesRecords();
+    if (records.length === 0) {
+      return result;
+    }
+
+    const nextRecords = [...records];
+    let hasChanges = false;
+
+    for (let index = 0; index < nextRecords.length; index += 1) {
+      const order = nextRecords[index];
+      if (order.sync.status !== "pending") {
+        continue;
+      }
+
+      result.attempted += 1;
+
+      if (!order.client) {
+        nextRecords[index] = markSyncFailure(
+          order,
+          "Missing client. Unable to sync this transaction.",
+        );
+        result.failed += 1;
+        hasChanges = true;
+        continue;
+      }
+
+      const business = buildBusinessForSync(order, options.business);
+      if (!business) {
+        nextRecords[index] = markSyncFailure(
+          order,
+          "Missing business details for sync.",
+        );
+        result.failed += 1;
+        hasChanges = true;
+        continue;
+      }
+
+      try {
+        const response = await createSaleFromCart({
+          business,
+          cart: order.items,
+          client: order.client,
+          paymentMethod: order.sync.paymentMethod,
+          amountPaid: order.sync.amountPaid,
+          currencyId: order.sync.currencyId || business.currency_id,
+          subtotal: order.subtotal,
+          discount: order.discount,
+          discountType: order.discountType,
+          createdBy: order.sync.createdBy ?? options.createdBy,
+        });
+        const remoteSaleId = extractRemoteSaleId(response);
+        nextRecords[index] = markSynced(order, remoteSaleId);
+        result.synced += 1;
+        hasChanges = true;
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Sync failed unexpectedly.";
+        nextRecords[index] = markSyncFailure(order, reason);
+        result.failed += 1;
+        hasChanges = true;
+      }
+    }
+
+    if (hasChanges) {
+      writeLocalSalesRecords(nextRecords);
+    }
+
     return result;
+  })();
+
+  try {
+    return await syncPendingTransactionsInFlight;
+  } finally {
+    syncPendingTransactionsInFlight = null;
   }
-
-  const records = readLocalSalesRecords();
-  if (records.length === 0) {
-    return result;
-  }
-
-  const nextRecords = [...records];
-  let hasChanges = false;
-
-  for (let index = 0; index < nextRecords.length; index += 1) {
-    const order = nextRecords[index];
-    if (order.sync.status !== "pending") {
-      continue;
-    }
-
-    result.attempted += 1;
-
-    if (!order.client) {
-      nextRecords[index] = markSyncFailure(
-        order,
-        "Missing client. Unable to sync this transaction.",
-      );
-      result.failed += 1;
-      hasChanges = true;
-      continue;
-    }
-
-    const business = buildBusinessForSync(order, options.business);
-    if (!business) {
-      nextRecords[index] = markSyncFailure(
-        order,
-        "Missing business details for sync.",
-      );
-      result.failed += 1;
-      hasChanges = true;
-      continue;
-    }
-
-    try {
-      const response = await createSaleFromCart({
-        business,
-        cart: order.items,
-        client: order.client,
-        paymentMethod: order.sync.paymentMethod,
-        amountPaid: order.sync.amountPaid,
-        currencyId: order.sync.currencyId || business.currency_id,
-        subtotal: order.subtotal,
-        discount: order.discount,
-        discountType: order.discountType,
-        createdBy: order.sync.createdBy ?? options.createdBy,
-      });
-      const remoteSaleId = extractRemoteSaleId(response);
-      nextRecords[index] = markSynced(order, remoteSaleId);
-      result.synced += 1;
-      hasChanges = true;
-    } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : "Sync failed unexpectedly.";
-      nextRecords[index] = markSyncFailure(order, reason);
-      result.failed += 1;
-      hasChanges = true;
-    }
-  }
-
-  if (hasChanges) {
-    writeLocalSalesRecords(nextRecords);
-  }
-
-  return result;
 }
