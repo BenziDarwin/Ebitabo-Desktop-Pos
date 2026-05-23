@@ -1,0 +1,176 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import SellPage from "@/app/sell/page";
+import { SUBSCRIPTION_EXPIRED_MESSAGE } from "@/lib/subscription";
+import { toast } from "sonner";
+import {
+  createSaleFromCart,
+  fetchBusinessClients,
+  getCachedBusinessClients,
+} from "@/services/sales-service";
+
+const useAuthMock = vi.fn();
+const usePOSMock = vi.fn();
+
+vi.mock("@/provider/auth-provider", () => ({
+  useAuth: () => useAuthMock(),
+}));
+
+vi.mock("@/provider/pos-provider", () => ({
+  usePOS: () => usePOSMock(),
+}));
+
+vi.mock("@/provider/quick-mode-provider", () => ({
+  useQuickMode: () => ({ isQuickMode: false }),
+}));
+
+vi.mock("@/components/pos-layout", () => ({
+  POSLayout: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+vi.mock("@/components/product-catalog", () => ({
+  ProductCatalog: () => <div>Catalog</div>,
+}));
+
+vi.mock("@/components/cart-summary", () => ({
+  CartSummary: ({ onCheckout }: { onCheckout: () => void }) => (
+    <button onClick={onCheckout} type="button">
+      Open Checkout
+    </button>
+  ),
+}));
+
+vi.mock("@/services/catalog-service", () => ({
+  syncCatalogFromCloud: vi.fn(async () => ({
+    products: 1,
+    services: 0,
+    syncedAt: new Date(),
+  })),
+}));
+
+vi.mock("@/services/order-service", () => ({
+  completeOrder: vi.fn(),
+}));
+
+vi.mock("@/services/cart-stock-service", () => ({
+  findFirstInsufficientStock: vi.fn(() => null),
+  formatStockQuantity: vi.fn(() => "0"),
+  getLocalProductStockMap: vi.fn(() => new Map()),
+}));
+
+vi.mock("@/services/sales-service", () => ({
+  createSaleFromCart: vi.fn(),
+  extractRemoteSaleId: vi.fn(() => 999),
+  fetchBusinessClients: vi.fn(async () => []),
+  getCachedBusinessClients: vi.fn(() => []),
+}));
+
+vi.mock("sonner", () => ({
+  toast: {
+    error: vi.fn(),
+    warning: vi.fn(),
+    success: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
+describe("SellPage create-sale safeguards", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    const expiredBusiness = {
+      id: 12,
+      name: "Test Business",
+      account_type: "Sales Business",
+      currency_id: 1,
+      business_logo: null,
+      dateExpiry: "2000-01-01T00:00:00.000Z",
+      phone_numbers: [],
+      contact_details: null,
+      company_name: null,
+      company_address: null,
+      company_phone: null,
+      company_email: null,
+      apiUrl: "https://example.com",
+      userId: "9",
+    };
+
+    const refreshBusinessDetails = vi.fn(async () => expiredBusiness);
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "9",
+        name: "Cashier",
+        username: "cashier",
+      },
+      business: expiredBusiness,
+      currency: {
+        id: 1,
+        name: "USD",
+        symbol: "$",
+      },
+      isReady: true,
+      isAuthenticated: true,
+      fetchBusinessDetails: refreshBusinessDetails,
+    });
+
+    usePOSMock.mockReturnValue({
+      cart: [
+        {
+          id: "1",
+          productId: "1",
+          name: "Soda",
+          quantity: 1,
+          price: 120,
+          tax: 0,
+          subtotal: 120,
+        },
+      ],
+      cartSubtotal: 120,
+      cartTax: 0,
+      cartTotal: 120,
+      discount: 0,
+      discountType: "amount",
+      selectedClient: {
+        id: "7",
+        name: "Client A",
+        advancedAmount: 0,
+        createdAt: new Date(),
+      },
+      setSelectedClient: vi.fn(),
+      orderNotes: "",
+      activeDraftId: null,
+      orderDrafts: [],
+      saveOrderDraft: vi.fn(),
+      deleteOrderDraft: vi.fn(),
+      clearCart: vi.fn(),
+    });
+  });
+
+  it("refreshes business details before each attempt and blocks expired subscriptions", async () => {
+    render(<SellPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Checkout" }));
+
+    const createSaleButton = await screen.findByRole("button", {
+      name: "Create Sale",
+    });
+
+    fireEvent.click(createSaleButton);
+    fireEvent.click(createSaleButton);
+
+    await waitFor(() => {
+      const auth = useAuthMock.mock.results[0]?.value as {
+        fetchBusinessDetails: ReturnType<typeof vi.fn>;
+      };
+      expect(auth.fetchBusinessDetails).toHaveBeenCalledTimes(2);
+    });
+
+    expect(fetchBusinessClients).toHaveBeenCalled();
+    expect(getCachedBusinessClients).toHaveBeenCalled();
+    expect(createSaleFromCart).not.toHaveBeenCalled();
+    expect(toast.error).toHaveBeenCalledWith(SUBSCRIPTION_EXPIRED_MESSAGE);
+  });
+});

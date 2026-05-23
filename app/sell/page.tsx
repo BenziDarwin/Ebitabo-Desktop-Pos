@@ -56,6 +56,7 @@ import {
   isSubscriptionExpired,
   SUBSCRIPTION_EXPIRED_MESSAGE,
 } from "@/lib/subscription";
+import { resolveBusinessForSale } from "@/lib/sale-context";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
 import type { Client, OrderDraft } from "@/lib/types";
@@ -70,7 +71,14 @@ const PAYMENT_METHODS: SalePaymentMethod[] = [
 ];
 
 export default function SellPage() {
-  const { user, business, currency, isReady, isAuthenticated } = useAuth();
+  const {
+    user,
+    business,
+    currency,
+    isReady,
+    isAuthenticated,
+    fetchBusinessDetails,
+  } = useAuth();
   const { isQuickMode } = useQuickMode();
   const {
     cart,
@@ -239,12 +247,17 @@ export default function SellPage() {
   };
 
   const handleCompletePayment = async () => {
-    if (!business) {
+    const resolvedBusiness = await resolveBusinessForSale({
+      currentBusiness: business,
+      refreshBusinessDetails: fetchBusinessDetails,
+    });
+
+    if (!resolvedBusiness) {
       toast.error("Business details not loaded. Please login again.");
       return;
     }
 
-    if (isSubscriptionExpired(business.dateExpiry)) {
+    if (isSubscriptionExpired(resolvedBusiness.dateExpiry)) {
       toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
       return;
     }
@@ -273,7 +286,7 @@ export default function SellPage() {
       return;
     }
 
-    const userId = user?.id ?? business?.userId;
+    const userId = user?.id ?? resolvedBusiness.userId;
     if (!userId) {
       toast.error("No active user session. Please login again.");
       return;
@@ -283,7 +296,7 @@ export default function SellPage() {
     setAmountPaid(resolvedAmountPaid);
 
     const resolvedCurrencyId = Number(
-      currency?.id ?? business.currency_id ?? 0,
+      currency?.id ?? resolvedBusiness.currency_id ?? 0,
     );
     const balanceDue = Math.max(0, cartTotal - resolvedAmountPaid);
     const change = Math.max(0, resolvedAmountPaid - cartTotal);
@@ -300,7 +313,7 @@ export default function SellPage() {
     if (!isOffline) {
       try {
         const remoteResponse = await createSaleFromCart({
-          business,
+          business: resolvedBusiness,
           cart,
           client: selectedClient,
           paymentMethod: resolvedPaymentMethod,
@@ -355,8 +368,8 @@ export default function SellPage() {
           paymentMethod: resolvedPaymentMethod,
           amountPaid: resolvedAmountPaid,
           currencyId: resolvedCurrencyId,
-          businessAccountType: business.account_type,
-          businessUserId: business.userId,
+          businessAccountType: resolvedBusiness.account_type,
+          businessUserId: resolvedBusiness.userId,
           createdBy: user?.name || user?.username,
         },
       });

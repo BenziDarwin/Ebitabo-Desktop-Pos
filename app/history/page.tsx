@@ -17,6 +17,7 @@ import {
   isSubscriptionExpired,
   SUBSCRIPTION_EXPIRED_MESSAGE,
 } from "@/lib/subscription";
+import { resolveBusinessForSale } from "@/lib/sale-context";
 import type { CompletedOrder } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -212,7 +213,7 @@ function buildTopProducts(orders: CompletedOrder[]) {
 }
 
 export default function HistoryPage() {
-  const { user, business, currency } = useAuth();
+  const { user, business, currency, fetchBusinessDetails } = useAuth();
   const [orders, setOrders] = useState<CompletedOrder[]>([]);
   const [remoteDailySales, setRemoteDailySales] = useState<DailySalesRecord[]>(
     [],
@@ -326,7 +327,13 @@ export default function HistoryPage() {
   const runPendingSync = useCallback(
     async (showToasts: boolean) => {
       if (isSyncingPending) return;
-      if (isSubscriptionExpired(business?.dateExpiry)) {
+
+      const resolvedBusiness = await resolveBusinessForSale({
+        currentBusiness: business,
+        refreshBusinessDetails: fetchBusinessDetails,
+      });
+
+      if (isSubscriptionExpired(resolvedBusiness?.dateExpiry)) {
         if (showToasts) {
           toast.error(SUBSCRIPTION_EXPIRED_MESSAGE);
         }
@@ -348,7 +355,7 @@ export default function HistoryPage() {
       setIsSyncingPending(true);
       try {
         const result = await syncPendingTransactions({
-          business,
+          business: resolvedBusiness ?? business,
           createdBy: user?.name || user?.username,
         });
         await loadData();
@@ -381,7 +388,14 @@ export default function HistoryPage() {
         setIsSyncingPending(false);
       }
     },
-    [business, isSyncingPending, loadData, pendingCount, user],
+    [
+      business,
+      fetchBusinessDetails,
+      isSyncingPending,
+      loadData,
+      pendingCount,
+      user,
+    ],
   );
 
   const handleSyncPending = () => {
