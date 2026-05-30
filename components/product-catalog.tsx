@@ -377,8 +377,8 @@ export function ProductCatalog({
         : [],
   };
   const quickModeRows = [
-    ...products.map((product) => ({
-      id: `product-${product.id}`,
+    ...products.map((product, index) => ({
+      id: `product-${product.id}-${index}`,
       name: product.name,
       type: "Product" as const,
       category: product.category || "Uncategorized",
@@ -388,8 +388,8 @@ export function ProductCatalog({
       canAdd: product.stock > 0,
       onAdd: () => handleAddToCart(product),
     })),
-    ...services.map((service) => ({
-      id: `service-${service.id}`,
+    ...services.map((service, index) => ({
+      id: `service-${service.id}-${index}`,
       name: service.name,
       type: "Service" as const,
       category: "Service",
@@ -531,9 +531,9 @@ export function ProductCatalog({
                   </h3>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {displayedItems.products.map((product) => (
+                  {displayedItems.products.map((product, index) => (
                     <div
-                      key={product.id}
+                      key={`${product.id}-${index}`}
                       className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
                     >
                       <CatalogCardImage
@@ -592,9 +592,9 @@ export function ProductCatalog({
                   </h3>
                 )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {displayedItems.services.map((service) => (
+                  {displayedItems.services.map((service, index) => (
                     <div
-                      key={service.id}
+                      key={`${service.id}-${index}`}
                       className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
                     >
                       <CatalogCardImage

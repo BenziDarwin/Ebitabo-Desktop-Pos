@@ -17,15 +17,17 @@ export const Storage = {
     }
   },
 
-  setItem(key: string, value: string): void {
-    if (!canUseStorage()) return;
+  setItem(key: string, value: string): boolean {
+    if (!canUseStorage()) return false;
     try {
       window.localStorage.setItem(key, value);
+      return true;
     } catch (error) {
       console.warn("[Storage] Failed to persist key", {
         key,
         error,
       });
+      return false;
     }
   },
 
@@ -46,7 +48,7 @@ export const Storage = {
     return parseJsonSafely<T>(this.getItem(key), fallback);
   },
 
-  setJson<T>(key: string, value: T): void {
-    this.setItem(key, JSON.stringify(value));
+  setJson<T>(key: string, value: T): boolean {
+    return this.setItem(key, JSON.stringify(value));
   },
 };

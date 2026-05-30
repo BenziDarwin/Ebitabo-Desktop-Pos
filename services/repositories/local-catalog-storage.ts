@@ -3,6 +3,7 @@ import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
 
 const LOG_PREFIX = "[CatalogSync]";
+const MAX_STORED_IMAGE_LENGTH = 2048;
 
 interface SerializedProduct extends Omit<Product, "createdAt"> {
   createdAt: string;
@@ -16,6 +17,20 @@ interface SerializedClient extends Omit<Client, "createdAt"> {
   createdAt: string;
 }
 
+interface VolatileCatalogState {
+  products: SerializedProduct[] | null;
+  services: SerializedService[] | null;
+  productClients: SerializedClient[] | null;
+  serviceClients: SerializedClient[] | null;
+}
+
+const volatileCatalogState: VolatileCatalogState = {
+  products: null,
+  services: null,
+  productClients: null,
+  serviceClients: null,
+};
+
 function sanitizeStoredImage(image?: string): string | undefined {
   if (typeof image !== "string") return undefined;
   const normalized = image.trim();
@@ -28,6 +43,15 @@ function sanitizeStoredImage(image?: string): string | undefined {
     lower === "false" ||
     lower === "none"
   ) {
+    return undefined;
+  }
+
+  // Avoid exhausting localStorage with large inline image blobs.
+  if (lower.startsWith("data:")) {
+    return undefined;
+  }
+
+  if (normalized.length > MAX_STORED_IMAGE_LENGTH) {
     return undefined;
   }
 
@@ -86,36 +110,62 @@ function deserializeClient(client: SerializedClient): Client {
   };
 }
 
+function readSerializedCollection<T>(
+  storageKey: string,
+  volatileData: T[] | null,
+): T[] {
+  if (volatileData !== null) {
+    return volatileData;
+  }
+
+  const stored = Storage.getJson<T[]>(storageKey, []);
+  return Array.isArray(stored) ? stored : [];
+}
+
 export function readLocalProducts(): Product[] {
-  const serialized = Storage.getJson<SerializedProduct[]>(
+  const serialized = readSerializedCollection<SerializedProduct>(
     STORAGE_KEYS.catalogProducts,
-    [],
+    volatileCatalogState.products,
   );
   return serialized.map(deserializeProduct);
 }
 
 export function writeLocalProducts(products: Product[]): void {
   console.info(`${LOG_PREFIX} writeLocalProducts`, { count: products.length });
-  Storage.setJson(STORAGE_KEYS.catalogProducts, products.map(serializeProduct));
+  const serialized = products.map(serializeProduct);
+  volatileCatalogState.products = serialized;
+  const didPersist = Storage.setJson(STORAGE_KEYS.catalogProducts, serialized);
+  if (!didPersist) {
+    console.warn(`${LOG_PREFIX} writeLocalProducts persisted in memory only`, {
+      count: serialized.length,
+    });
+  }
 }
 
 export function readLocalServices(): Service[] {
-  const serialized = Storage.getJson<SerializedService[]>(
+  const serialized = readSerializedCollection<SerializedService>(
     STORAGE_KEYS.catalogServices,
-    [],
+    volatileCatalogState.services,
   );
   return serialized.map(deserializeService);
 }
 
 export function writeLocalServices(services: Service[]): void {
   console.info(`${LOG_PREFIX} writeLocalServices`, { count: services.length });
-  Storage.setJson(STORAGE_KEYS.catalogServices, services.map(serializeService));
+  const serialized = services.map(serializeService);
+  volatileCatalogState.services = serialized;
+  const didPersist = Storage.setJson(STORAGE_KEYS.catalogServices, serialized);
+  if (!didPersist) {
+    console.warn(`${LOG_PREFIX} writeLocalServices persisted in memory only`, {
+      count: serialized.length,
+    });
+  }
 }
 
 export function readLocalProductClients(): Client[] {
-  const serialized = Storage.getJson<SerializedClient[]>(
+  const serialized = readSerializedCollection<SerializedClient>(
     STORAGE_KEYS.clientsProducts,
-    [],
+    volatileCatalogState.productClients,
   );
   return serialized.map(deserializeClient);
 }
@@ -124,13 +174,21 @@ export function writeLocalProductClients(clients: Client[]): void {
   console.info(`${LOG_PREFIX} writeLocalProductClients`, {
     count: clients.length,
   });
-  Storage.setJson(STORAGE_KEYS.clientsProducts, clients.map(serializeClient));
+  const serialized = clients.map(serializeClient);
+  volatileCatalogState.productClients = serialized;
+  const didPersist = Storage.setJson(STORAGE_KEYS.clientsProducts, serialized);
+  if (!didPersist) {
+    console.warn(
+      `${LOG_PREFIX} writeLocalProductClients persisted in memory only`,
+      { count: serialized.length },
+    );
+  }
 }
 
 export function readLocalServiceClients(): Client[] {
-  const serialized = Storage.getJson<SerializedClient[]>(
+  const serialized = readSerializedCollection<SerializedClient>(
     STORAGE_KEYS.clientsServices,
-    [],
+    volatileCatalogState.serviceClients,
   );
   return serialized.map(deserializeClient);
 }
@@ -139,5 +197,13 @@ export function writeLocalServiceClients(clients: Client[]): void {
   console.info(`${LOG_PREFIX} writeLocalServiceClients`, {
     count: clients.length,
   });
-  Storage.setJson(STORAGE_KEYS.clientsServices, clients.map(serializeClient));
+  const serialized = clients.map(serializeClient);
+  volatileCatalogState.serviceClients = serialized;
+  const didPersist = Storage.setJson(STORAGE_KEYS.clientsServices, serialized);
+  if (!didPersist) {
+    console.warn(
+      `${LOG_PREFIX} writeLocalServiceClients persisted in memory only`,
+      { count: serialized.length },
+    );
+  }
 }

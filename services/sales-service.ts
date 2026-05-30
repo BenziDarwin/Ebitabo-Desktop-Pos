@@ -95,6 +95,8 @@ interface CreateSaleFromCartInput {
 }
 
 const CREATE_SALE_FIELDS = ["id", "client_id", "reference"];
+const CLIENTS_PAGE_SIZE = 100;
+const MAX_CLIENT_PAGES = 200;
 
 function isHtmlResponse(text: string): boolean {
   return /^<!doctype html>|^<html/i.test(text.trim());
@@ -150,6 +152,23 @@ function mapCreateUid(userId: string): number {
 
 function mapClientId(client: Client): number {
   return toPositiveNumber(client.id);
+}
+
+function mapBusinessClientRecord(
+  record: Record<string, unknown>,
+): Client | null {
+  const id = String(record.id ?? "").trim();
+  const name = String(record.name ?? "").trim();
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    id,
+    name,
+    advancedAmount: toPositiveNumber(record.advancedAmount),
+    createdAt: new Date(),
+  };
 }
 
 function buildProductStockMap(): Map<string, number> {
@@ -286,23 +305,52 @@ export async function fetchBusinessClients(
   const model = getSalesClientModel(accountType);
 
   try {
-    const records = await sendRequestModel(model, {
-      fields: ["id", "name", "advancedAmount"],
-    });
-
     const clients: Client[] = [];
-    for (const record of records) {
-      const id = String(record.id ?? "").trim();
-      const name = String(record.name ?? "").trim();
-      if (!id || !name) {
-        continue;
+    const seenClientIds = new Set<string>();
+    let pageNo = 1;
+
+    while (pageNo <= MAX_CLIENT_PAGES) {
+      const records = await sendRequestModel(model, {
+        fields: ["id", "name", "advancedAmount"],
+        search_filter: "",
+        page_no: pageNo,
+        limit: CLIENTS_PAGE_SIZE,
+      });
+
+      let newlyAddedOnPage = 0;
+      for (const record of records) {
+        const client = mapBusinessClientRecord(record);
+        if (!client || seenClientIds.has(client.id)) {
+          continue;
+        }
+
+        seenClientIds.add(client.id);
+        clients.push(client);
+        newlyAddedOnPage += 1;
       }
 
-      clients.push({
-        id,
-        name,
-        advancedAmount: toPositiveNumber(record.advancedAmount),
-        createdAt: new Date(),
+      if (records.length < CLIENTS_PAGE_SIZE) {
+        break;
+      }
+
+      // Guard against APIs that ignore page_no and keep returning page 1.
+      if (newlyAddedOnPage === 0) {
+        console.warn("[ClientSync] Pagination stalled while fetching clients", {
+          accountType,
+          pageNo,
+          records: records.length,
+        });
+        break;
+      }
+
+      pageNo += 1;
+    }
+
+    if (pageNo > MAX_CLIENT_PAGES) {
+      console.warn("[ClientSync] Reached max client pages while syncing", {
+        accountType,
+        maxPages: MAX_CLIENT_PAGES,
+        pageSize: CLIENTS_PAGE_SIZE,
       });
     }
 

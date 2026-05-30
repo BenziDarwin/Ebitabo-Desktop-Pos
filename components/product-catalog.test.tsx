@@ -155,4 +155,42 @@ describe("ProductCatalog behavior", () => {
 
     expect(addToCartMock).not.toHaveBeenCalled();
   });
+
+  it("renders all matching products even when ids are duplicated", async () => {
+    useAuthMock.mockReturnValue({
+      currency: { id: 1, name: "USD", symbol: "$" },
+      business: { account_type: "Sales Business" },
+    });
+    vi.mocked(getProducts).mockResolvedValue([
+      {
+        id: "dup-id",
+        name: "Duplicate A",
+        barcode: "111",
+        sku: "DUP-A",
+        category: "Category",
+        price: 100,
+        tax: 0,
+        stock: 2,
+        createdAt: new Date(),
+      },
+      {
+        id: "dup-id",
+        name: "Duplicate B",
+        barcode: "222",
+        sku: "DUP-B",
+        category: "Category",
+        price: 200,
+        tax: 0,
+        stock: 3,
+        createdAt: new Date(),
+      },
+    ]);
+
+    render(<ProductCatalog quickMode={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Duplicate A")).toBeInTheDocument();
+      expect(screen.getByText("Duplicate B")).toBeInTheDocument();
+    });
+  });
 });
