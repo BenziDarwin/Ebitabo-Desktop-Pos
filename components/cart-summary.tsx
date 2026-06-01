@@ -168,104 +168,106 @@ export function CartSummary({
       </div>
 
       {/* Items */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {cart.length === 0 ? (
-          <div className="flex items-center justify-center h-32 text-center">
-            <p className="text-slate-500">No items in cart</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {cart.map((item) => (
-              <div
-                key={item.id}
-                className="bg-slate-50 rounded-lg p-2 border border-slate-200"
-              >
-                <div className="flex justify-between items-start mb-1.5">
-                  <div>
-                    <h4 className="font-semibold text-sm text-slate-900">
-                      {item.name}
-                    </h4>
-                    <div className="mt-0.5">
-                      <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
-                        Unit Price
-                      </label>
-                      <Input
+      {!quickMode && (
+        <div className="flex-1 overflow-y-auto p-3">
+          {cart.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-center">
+              <p className="text-slate-500">No items in cart</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {cart.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-slate-50 rounded-lg p-2 border border-slate-200"
+                >
+                  <div className="flex justify-between items-start mb-1.5">
+                    <div>
+                      <h4 className="font-semibold text-sm text-slate-900">
+                        {item.name}
+                      </h4>
+                      <div className="mt-0.5">
+                        <label className="block text-[10px] font-medium text-slate-500 mb-0.5">
+                          Unit Price
+                        </label>
+                        <Input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={item.price}
+                          onChange={(e) =>
+                            handleUnitPriceChange(item.id, e.target.value)
+                          }
+                          className="h-7 w-24 text-xs"
+                        />
+                      </div>
+                    </div>
+                    <Button
+                      onClick={() => removeFromCart(item.id)}
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1 bg-white rounded border border-slate-200">
+                      <Button
+                        onClick={() =>
+                          updateQuantityWithStockCheck(
+                            item.id,
+                            Math.max(0, item.quantity - QUANTITY_STEP),
+                          )
+                        }
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                      >
+                        <Minus className="w-3 h-3" />
+                      </Button>
+                      <input
                         type="number"
                         min={0}
-                        step="0.01"
-                        value={item.price}
+                        step={QUANTITY_STEP}
+                        inputMode="decimal"
+                        value={item.quantity}
                         onChange={(e) =>
-                          handleUnitPriceChange(item.id, e.target.value)
+                          updateQuantityWithStockCheck(
+                            item.id,
+                            normalizeQuantityInput(e.target.value),
+                          )
                         }
-                        className="h-7 w-24 text-xs"
+                        className="w-14 text-center text-xs font-semibold border-0 focus:ring-0"
                       />
+                      <Button
+                        onClick={() =>
+                          updateQuantityWithStockCheck(
+                            item.id,
+                            item.quantity + QUANTITY_STEP,
+                          )
+                        }
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </Button>
                     </div>
+                    <span className="text-sm font-semibold text-slate-900">
+                      {formatCurrency(item.subtotal, currency)}
+                    </span>
                   </div>
-                  <Button
-                    onClick={() => removeFromCart(item.id)}
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1 bg-white rounded border border-slate-200">
-                    <Button
-                      onClick={() =>
-                        updateQuantityWithStockCheck(
-                          item.id,
-                          Math.max(0, item.quantity - QUANTITY_STEP),
-                        )
-                      }
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                    >
-                      <Minus className="w-3 h-3" />
-                    </Button>
-                    <input
-                      type="number"
-                      min={0}
-                      step={QUANTITY_STEP}
-                      inputMode="decimal"
-                      value={item.quantity}
-                      onChange={(e) =>
-                        updateQuantityWithStockCheck(
-                          item.id,
-                          normalizeQuantityInput(e.target.value),
-                        )
-                      }
-                      className="w-14 text-center text-xs font-semibold border-0 focus:ring-0"
-                    />
-                    <Button
-                      onClick={() =>
-                        updateQuantityWithStockCheck(
-                          item.id,
-                          item.quantity + QUANTITY_STEP,
-                        )
-                      }
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 w-7 p-0"
-                    >
-                      <Plus className="w-3 h-3" />
-                    </Button>
+                  <div className="mt-1 text-[11px] text-slate-500">
+                    Qty: {formatQuantity(item.quantity)}
                   </div>
-                  <span className="text-sm font-semibold text-slate-900">
-                    {formatCurrency(item.subtotal, currency)}
-                  </span>
                 </div>
-                <div className="mt-1 text-[11px] text-slate-500">
-                  Qty: {formatQuantity(item.quantity)}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Totals */}
       <div className="border-t border-slate-200 p-3 space-y-2.5">

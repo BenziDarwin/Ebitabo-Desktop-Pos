@@ -31,7 +31,7 @@ const volatileCatalogState: VolatileCatalogState = {
   serviceClients: null,
 };
 
-function sanitizeStoredImage(image?: string): string | undefined {
+function normalizeImageValue(image?: string): string | undefined {
   if (typeof image !== "string") return undefined;
   const normalized = image.trim();
   if (!normalized) return undefined;
@@ -46,11 +46,16 @@ function sanitizeStoredImage(image?: string): string | undefined {
     return undefined;
   }
 
-  // Avoid exhausting localStorage with large inline image blobs.
-  if (lower.startsWith("data:")) {
-    return undefined;
-  }
+  return normalized;
+}
 
+function sanitizeStoredImage(image?: string): string | undefined {
+  const normalized = normalizeImageValue(image);
+  if (!normalized) return undefined;
+  const lower = normalized.toLowerCase();
+
+  // Avoid exhausting localStorage with large inline image blobs.
+  if (lower.startsWith("data:")) return undefined;
   if (normalized.length > MAX_STORED_IMAGE_LENGTH) {
     return undefined;
   }
@@ -64,10 +69,15 @@ function sanitizeStoredBarcode(value?: string): string | undefined {
   return normalized ? normalized : undefined;
 }
 
-function serializeProduct(product: Product): SerializedProduct {
+function serializeProduct(
+  product: Product,
+  options: { sanitizeImage: boolean },
+): SerializedProduct {
   return {
     ...product,
-    image: sanitizeStoredImage(product.image),
+    image: options.sanitizeImage
+      ? sanitizeStoredImage(product.image)
+      : normalizeImageValue(product.image),
     createdAt: product.createdAt.toISOString(),
   };
 }
@@ -81,10 +91,15 @@ function deserializeProduct(product: SerializedProduct): Product {
   };
 }
 
-function serializeService(service: Service): SerializedService {
+function serializeService(
+  service: Service,
+  options: { sanitizeImage: boolean },
+): SerializedService {
   return {
     ...service,
-    image: sanitizeStoredImage(service.image),
+    image: options.sanitizeImage
+      ? sanitizeStoredImage(service.image)
+      : normalizeImageValue(service.image),
     createdAt: service.createdAt.toISOString(),
   };
 }
@@ -132,12 +147,21 @@ export function readLocalProducts(): Product[] {
 
 export function writeLocalProducts(products: Product[]): void {
   console.info(`${LOG_PREFIX} writeLocalProducts`, { count: products.length });
-  const serialized = products.map(serializeProduct);
-  volatileCatalogState.products = serialized;
-  const didPersist = Storage.setJson(STORAGE_KEYS.catalogProducts, serialized);
+  const inMemorySerialized = products.map((product) =>
+    serializeProduct(product, { sanitizeImage: false }),
+  );
+  volatileCatalogState.products = inMemorySerialized;
+
+  const persistedSerialized = products.map((product) =>
+    serializeProduct(product, { sanitizeImage: true }),
+  );
+  const didPersist = Storage.setJson(
+    STORAGE_KEYS.catalogProducts,
+    persistedSerialized,
+  );
   if (!didPersist) {
     console.warn(`${LOG_PREFIX} writeLocalProducts persisted in memory only`, {
-      count: serialized.length,
+      count: inMemorySerialized.length,
     });
   }
 }
@@ -152,12 +176,21 @@ export function readLocalServices(): Service[] {
 
 export function writeLocalServices(services: Service[]): void {
   console.info(`${LOG_PREFIX} writeLocalServices`, { count: services.length });
-  const serialized = services.map(serializeService);
-  volatileCatalogState.services = serialized;
-  const didPersist = Storage.setJson(STORAGE_KEYS.catalogServices, serialized);
+  const inMemorySerialized = services.map((service) =>
+    serializeService(service, { sanitizeImage: false }),
+  );
+  volatileCatalogState.services = inMemorySerialized;
+
+  const persistedSerialized = services.map((service) =>
+    serializeService(service, { sanitizeImage: true }),
+  );
+  const didPersist = Storage.setJson(
+    STORAGE_KEYS.catalogServices,
+    persistedSerialized,
+  );
   if (!didPersist) {
     console.warn(`${LOG_PREFIX} writeLocalServices persisted in memory only`, {
-      count: serialized.length,
+      count: inMemorySerialized.length,
     });
   }
 }

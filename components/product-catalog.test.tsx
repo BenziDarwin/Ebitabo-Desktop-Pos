@@ -35,12 +35,16 @@ vi.mock("sonner", () => ({
 
 describe("ProductCatalog behavior", () => {
   const addToCartMock = vi.fn();
+  const removeFromCartMock = vi.fn();
+  const updateCartItemMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
 
     usePOSMock.mockReturnValue({
       addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
       cart: [],
     });
 
@@ -192,5 +196,85 @@ describe("ProductCatalog behavior", () => {
       expect(screen.getByText("Duplicate A")).toBeInTheDocument();
       expect(screen.getByText("Duplicate B")).toBeInTheDocument();
     });
+  });
+
+  it("shows compact stacked quick mode tables for selected and searchable items", async () => {
+    usePOSMock.mockReturnValue({
+      addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
+      cart: [
+        {
+          id: "selected-1",
+          productId: "prod-1",
+          name: "Selected Milk",
+          quantity: 2,
+          price: 1500,
+          tax: 0,
+          subtotal: 3000,
+        },
+      ],
+    });
+
+    render(<ProductCatalog quickMode={true} />);
+
+    expect(await screen.findByText("Selected Items")).toBeInTheDocument();
+    expect(screen.getByText("Items Needing Search")).toBeInTheDocument();
+    expect(screen.getByText("Selected Milk")).toBeInTheDocument();
+    expect(
+      screen.getByText("Scan a barcode or search to load items"),
+    ).toBeInTheDocument();
+  });
+
+  it("removes an item from selected quick mode table", async () => {
+    usePOSMock.mockReturnValue({
+      addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
+      cart: [
+        {
+          id: "selected-2",
+          productId: "prod-2",
+          name: "Selected Bread",
+          quantity: 1,
+          price: 800,
+          tax: 0,
+          subtotal: 800,
+        },
+      ],
+    });
+
+    render(<ProductCatalog quickMode={true} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Remove" }));
+    expect(removeFromCartMock).toHaveBeenCalledWith("selected-2");
+  });
+
+  it("updates selected item quantity with decimal values in quick mode", async () => {
+    usePOSMock.mockReturnValue({
+      addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
+      cart: [
+        {
+          id: "selected-3",
+          productId: "prod-3",
+          name: "Selected Rice",
+          quantity: 1,
+          price: 3000,
+          tax: 0,
+          subtotal: 3000,
+        },
+      ],
+    });
+
+    render(<ProductCatalog quickMode={true} />);
+
+    const quantityInput = await screen.findByLabelText(
+      "Quantity for Selected Rice",
+    );
+    fireEvent.change(quantityInput, { target: { value: "1.25" } });
+
+    expect(updateCartItemMock).toHaveBeenCalledWith("selected-3", 1.25);
   });
 });

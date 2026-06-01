@@ -13,7 +13,11 @@ import type { Product, Service } from "@/lib/types";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
 import { formatCurrency } from "@/lib/format-currency";
-import { formatQuantity } from "@/lib/quantity";
+import {
+  MIN_QUANTITY,
+  formatQuantity,
+  toNonNegativeQuantity,
+} from "@/lib/quantity";
 import { resolveImageUri } from "@/lib/resolve-image-uri";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Search } from "lucide-react";
+import { ShoppingCart, Search, Trash2 } from "lucide-react";
 import productFallbackImage from "@/assets/images/empty/product.png";
 import serviceFallbackImage from "@/assets/images/empty/service.png";
 import { toast } from "sonner";
@@ -117,7 +121,7 @@ export function ProductCatalog({
   isSyncingCatalog = false,
   quickMode = false,
 }: ProductCatalogProps) {
-  const { addToCart, cart } = usePOS();
+  const { addToCart, removeFromCart, updateCartItem, cart } = usePOS();
   const { currency, business } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -125,6 +129,9 @@ export function ProductCatalog({
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
   const [isLoading, setIsLoading] = useState(true);
   const [clientUrl, setClientUrl] = useState<string | null>(null);
+  const [quickModeQuantityDrafts, setQuickModeQuantityDrafts] = useState<
+    Record<string, string>
+  >({});
   const activeSearchRequestRef = useRef(0);
   const previousQuickModeRef = useRef(quickMode);
   const lastAutoScanNeedleRef = useRef<string | null>(null);
@@ -400,6 +407,45 @@ export function ProductCatalog({
       onAdd: () => handleAddServiceToCart(service),
     })),
   ].sort((left, right) => left.name.localeCompare(right.name));
+  const quickModeSelectedRows = cart.map((item, index) => ({
+    id: `selected-${item.id}-${index}`,
+    cartItemId: item.id,
+    name: item.name,
+    type: item.serviceId ? "Service" : "Product",
+    quantityValue: item.quantity,
+    unitPrice: item.price,
+    subtotal: item.subtotal,
+  }));
+  const shouldPromptQuickModeSearch = !searchQuery.trim();
+
+  const commitQuickModeQuantity = (
+    cartItemId: string,
+    fallbackQuantity: number,
+  ) => {
+    const rawValue = quickModeQuantityDrafts[cartItemId];
+    if (rawValue === undefined) return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setQuickModeQuantityDrafts((previousDrafts) => {
+        const nextDrafts = { ...previousDrafts };
+        delete nextDrafts[cartItemId];
+        return nextDrafts;
+      });
+      return;
+    }
+
+    const normalizedQuantity = toNonNegativeQuantity(parsed);
+    const safeQuantity =
+      normalizedQuantity > 0
+        ? normalizedQuantity
+        : toNonNegativeQuantity(fallbackQuantity);
+    updateCartItem(cartItemId, safeQuantity);
+    setQuickModeQuantityDrafts((previousDrafts) => {
+      const nextDrafts = { ...previousDrafts };
+      delete nextDrafts[cartItemId];
+      return nextDrafts;
+    });
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -457,64 +503,213 @@ export function ProductCatalog({
               {isSyncingCatalog ? "Syncing catalog..." : "Loading..."}
             </p>
           </div>
-        ) : quickMode && !searchQuery.trim() ? (
-          <div className="flex items-center justify-center h-32 rounded-lg border border-dashed border-slate-300 bg-slate-50">
-            <p className="text-slate-500 text-sm">
-              Scan a barcode or search to load items
-            </p>
-          </div>
         ) : quickMode ? (
-          quickModeRows.length === 0 ? (
-            <div className="flex items-center justify-center h-32">
-              <p className="text-slate-500">No items found</p>
-            </div>
-          ) : (
+          <div className="flex h-full flex-col gap-3">
             <div className="rounded-lg border border-slate-200 bg-white">
-              <Table>
+              <div className="border-b border-slate-200 px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Selected Items
+                </p>
+              </div>
+              <Table className="text-xs">
                 <TableHeader>
-                  <TableRow className="bg-slate-50">
-                    <TableHead>Item</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Barcode</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead>Stock</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
+                  <TableRow className="bg-slate-50 hover:bg-slate-50">
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Item
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Type
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Qty
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Unit
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px] text-right">
+                      Subtotal
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px] text-right">
+                      Action
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {quickModeRows.map((row) => (
-                    <TableRow key={row.id}>
-                      <TableCell className="max-w-[280px]">
-                        <p className="truncate font-medium text-slate-900">
-                          {row.name}
-                        </p>
-                        <p className="text-xs text-slate-500 truncate">
-                          {row.category}
-                        </p>
-                      </TableCell>
-                      <TableCell>{row.type}</TableCell>
-                      <TableCell>{row.barcode || "-"}</TableCell>
-                      <TableCell>
-                        {formatCurrency(row.price, currency)}
-                      </TableCell>
-                      <TableCell>{row.stockLabel}</TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          onClick={row.onAdd}
-                          disabled={!row.canAdd}
-                          size="sm"
-                          className="h-8 bg-blue-600 hover:bg-blue-700"
-                        >
-                          <ShoppingCart className="w-3.5 h-3.5 mr-1" />
-                          Add
-                        </Button>
+                  {quickModeSelectedRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="px-2 py-2 text-center text-xs text-slate-500"
+                      >
+                        No selected items yet
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    quickModeSelectedRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="px-2 py-1.5 font-medium text-slate-900">
+                          <p className="max-w-[210px] truncate">{row.name}</p>
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {row.type}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          <Input
+                            type="number"
+                            min={MIN_QUANTITY}
+                            step={MIN_QUANTITY}
+                            inputMode="decimal"
+                            value={
+                              quickModeQuantityDrafts[row.cartItemId] ??
+                              String(row.quantityValue)
+                            }
+                            onChange={(event) => {
+                              const nextValue = event.target.value;
+                              setQuickModeQuantityDrafts((previousDrafts) => ({
+                                ...previousDrafts,
+                                [row.cartItemId]: nextValue,
+                              }));
+
+                              const parsed = Number(nextValue);
+                              if (!Number.isFinite(parsed) || parsed <= 0) {
+                                return;
+                              }
+                              updateCartItem(
+                                row.cartItemId,
+                                toNonNegativeQuantity(parsed),
+                              );
+                            }}
+                            onBlur={() =>
+                              commitQuickModeQuantity(
+                                row.cartItemId,
+                                row.quantityValue,
+                              )
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key !== "Enter") return;
+                              event.preventDefault();
+                              commitQuickModeQuantity(
+                                row.cartItemId,
+                                row.quantityValue,
+                              );
+                            }}
+                            className="h-7 w-20 text-xs px-2"
+                            aria-label={`Quantity for ${row.name}`}
+                          />
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {formatCurrency(row.unitPrice, currency)}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right font-semibold text-slate-900">
+                          {formatCurrency(row.subtotal, currency)}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right">
+                          <Button
+                            onClick={() => removeFromCart(row.cartItemId)}
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                          >
+                            <Trash2 className="w-3 h-3 mr-1" />
+                            Remove
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </div>
-          )
+
+            <div className="flex-1 rounded-lg border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Items Needing Search
+                </p>
+              </div>
+              <Table className="text-xs">
+                <TableHeader>
+                  <TableRow className="bg-slate-50 hover:bg-slate-50">
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Item
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Type
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Barcode
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Price
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px]">
+                      Stock
+                    </TableHead>
+                    <TableHead className="h-8 px-2 py-1 text-[11px] text-right">
+                      Action
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shouldPromptQuickModeSearch ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="px-2 py-3 text-center text-xs text-slate-500"
+                      >
+                        Scan a barcode or search to load items
+                      </TableCell>
+                    </TableRow>
+                  ) : quickModeRows.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={6}
+                        className="px-2 py-3 text-center text-xs text-slate-500"
+                      >
+                        No items found
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    quickModeRows.map((row) => (
+                      <TableRow key={row.id}>
+                        <TableCell className="max-w-[240px] px-2 py-1.5">
+                          <p className="truncate font-medium text-slate-900">
+                            {row.name}
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate">
+                            {row.category}
+                          </p>
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {row.type}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {row.barcode || "-"}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {formatCurrency(row.price, currency)}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-slate-600">
+                          {row.stockLabel}
+                        </TableCell>
+                        <TableCell className="px-2 py-1.5 text-right">
+                          <Button
+                            onClick={row.onAdd}
+                            disabled={!row.canAdd}
+                            size="sm"
+                            className="h-7 px-2 text-xs bg-blue-600 hover:bg-blue-700"
+                          >
+                            <ShoppingCart className="w-3 h-3 mr-1" />
+                            Add
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
         ) : displayedItems.products.length === 0 &&
           displayedItems.services.length === 0 ? (
           <div className="flex items-center justify-center h-32">

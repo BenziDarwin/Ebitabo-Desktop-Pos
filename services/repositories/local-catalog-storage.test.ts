@@ -103,4 +103,19 @@ describe("local-catalog-storage", () => {
     expect(persisted[0]?.image).toBeUndefined();
     expect(persisted[1]?.image).toBe("/web/image/2");
   });
+
+  it("keeps full image values available in memory for immediate rendering", async () => {
+    const repo = await import("@/services/repositories/local-catalog-storage");
+    const hugeInlineImage = `data:image/png;base64,${"a".repeat(9000)}`;
+
+    repo.writeLocalProducts([buildProduct({ image: hugeInlineImage })]);
+    const products = repo.readLocalProducts();
+
+    expect(products[0]?.image).toBe(hugeInlineImage);
+
+    const persisted = storageState.get(STORAGE_KEYS.catalogProducts) as Array<
+      Record<string, unknown>
+    >;
+    expect(persisted[0]?.image).toBeUndefined();
+  });
 });
