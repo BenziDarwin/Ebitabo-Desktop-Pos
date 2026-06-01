@@ -15,6 +15,7 @@ import { Storage } from "@/lib/storage";
 import { formatCurrency } from "@/lib/format-currency";
 import {
   MIN_QUANTITY,
+  QUANTITY_STEP,
   formatQuantity,
   toNonNegativeQuantity,
 } from "@/lib/quantity";
@@ -29,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ShoppingCart, Search, Trash2 } from "lucide-react";
+import { Minus, Plus, Search, ShoppingCart, Trash2 } from "lucide-react";
 import productFallbackImage from "@/assets/images/empty/product.png";
 import serviceFallbackImage from "@/assets/images/empty/service.png";
 import { toast } from "sonner";
@@ -121,7 +122,13 @@ export function ProductCatalog({
   isSyncingCatalog = false,
   quickMode = false,
 }: ProductCatalogProps) {
-  const { addToCart, removeFromCart, updateCartItem, cart } = usePOS();
+  const {
+    addToCart,
+    removeFromCart,
+    updateCartItem,
+    updateCartItemPrice,
+    cart,
+  } = usePOS();
   const { currency, business } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -447,6 +454,39 @@ export function ProductCatalog({
     });
   };
 
+  const resolveQuickModeQuantityValue = (
+    cartItemId: string,
+    fallbackQuantity: number,
+  ): number => {
+    const draftValue = quickModeQuantityDrafts[cartItemId];
+    const parsedDraft = Number(draftValue);
+    if (Number.isFinite(parsedDraft) && parsedDraft > 0) {
+      return toNonNegativeQuantity(parsedDraft);
+    }
+    return toNonNegativeQuantity(fallbackQuantity);
+  };
+
+  const updateQuickModeQuantityByDelta = (
+    cartItemId: string,
+    fallbackQuantity: number,
+    delta: number,
+  ) => {
+    const currentQuantity = resolveQuickModeQuantityValue(
+      cartItemId,
+      fallbackQuantity,
+    );
+    const nextQuantity = toNonNegativeQuantity(currentQuantity + delta);
+    updateCartItem(cartItemId, nextQuantity);
+    setQuickModeQuantityDrafts((previousDrafts) => {
+      if (!(cartItemId in previousDrafts)) {
+        return previousDrafts;
+      }
+      const nextDrafts = { ...previousDrafts };
+      delete nextDrafts[cartItemId];
+      return nextDrafts;
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Search Bar */}
@@ -524,7 +564,7 @@ export function ProductCatalog({
                       Qty
                     </TableHead>
                     <TableHead className="h-8 px-2 py-1 text-[11px]">
-                      Unit
+                      Unit Price
                     </TableHead>
                     <TableHead className="h-8 px-2 py-1 text-[11px] text-right">
                       Subtotal
@@ -554,51 +594,102 @@ export function ProductCatalog({
                           {row.type}
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-slate-600">
-                          <Input
-                            type="number"
-                            min={MIN_QUANTITY}
-                            step={MIN_QUANTITY}
-                            inputMode="decimal"
-                            value={
-                              quickModeQuantityDrafts[row.cartItemId] ??
-                              String(row.quantityValue)
-                            }
-                            onChange={(event) => {
-                              const nextValue = event.target.value;
-                              setQuickModeQuantityDrafts((previousDrafts) => ({
-                                ...previousDrafts,
-                                [row.cartItemId]: nextValue,
-                              }));
-
-                              const parsed = Number(nextValue);
-                              if (!Number.isFinite(parsed) || parsed <= 0) {
-                                return;
+                          <div className="flex w-fit items-center gap-1 rounded border border-slate-200 bg-slate-50 px-1 py-0.5">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() =>
+                                updateQuickModeQuantityByDelta(
+                                  row.cartItemId,
+                                  row.quantityValue,
+                                  -QUANTITY_STEP,
+                                )
                               }
-                              updateCartItem(
-                                row.cartItemId,
-                                toNonNegativeQuantity(parsed),
-                              );
-                            }}
-                            onBlur={() =>
-                              commitQuickModeQuantity(
-                                row.cartItemId,
-                                row.quantityValue,
-                              )
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key !== "Enter") return;
-                              event.preventDefault();
-                              commitQuickModeQuantity(
-                                row.cartItemId,
-                                row.quantityValue,
-                              );
-                            }}
-                            className="h-7 w-20 text-xs px-2"
-                            aria-label={`Quantity for ${row.name}`}
-                          />
+                              aria-label={`Decrease quantity for ${row.name}`}
+                            >
+                              <Minus className="w-3 h-3" />
+                            </Button>
+                            <Input
+                              type="number"
+                              min={MIN_QUANTITY}
+                              step={MIN_QUANTITY}
+                              inputMode="decimal"
+                              value={
+                                quickModeQuantityDrafts[row.cartItemId] ??
+                                String(row.quantityValue)
+                              }
+                              onChange={(event) => {
+                                const nextValue = event.target.value;
+                                setQuickModeQuantityDrafts(
+                                  (previousDrafts) => ({
+                                    ...previousDrafts,
+                                    [row.cartItemId]: nextValue,
+                                  }),
+                                );
+
+                                const parsed = Number(nextValue);
+                                if (!Number.isFinite(parsed) || parsed <= 0) {
+                                  return;
+                                }
+                                updateCartItem(
+                                  row.cartItemId,
+                                  toNonNegativeQuantity(parsed),
+                                );
+                              }}
+                              onBlur={() =>
+                                commitQuickModeQuantity(
+                                  row.cartItemId,
+                                  row.quantityValue,
+                                )
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter") return;
+                                event.preventDefault();
+                                commitQuickModeQuantity(
+                                  row.cartItemId,
+                                  row.quantityValue,
+                                );
+                              }}
+                              className="h-7 w-20 border-0 bg-transparent px-1 text-center text-xs"
+                              aria-label={`Quantity for ${row.name}`}
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 w-6 p-0"
+                              onClick={() =>
+                                updateQuickModeQuantityByDelta(
+                                  row.cartItemId,
+                                  row.quantityValue,
+                                  QUANTITY_STEP,
+                                )
+                              }
+                              aria-label={`Increase quantity for ${row.name}`}
+                            >
+                              <Plus className="w-3 h-3" />
+                            </Button>
+                          </div>
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-slate-600">
-                          {formatCurrency(row.unitPrice, currency)}
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            inputMode="decimal"
+                            value={row.unitPrice}
+                            onChange={(event) => {
+                              const parsed = Number(event.target.value);
+                              updateCartItemPrice(
+                                row.cartItemId,
+                                Number.isFinite(parsed) ? parsed : 0,
+                              );
+                            }}
+                            className="h-7 w-24 px-2 text-xs"
+                            aria-label={`Unit price for ${row.name}`}
+                          />
                         </TableCell>
                         <TableCell className="px-2 py-1.5 text-right font-semibold text-slate-900">
                           {formatCurrency(row.subtotal, currency)}

@@ -37,6 +37,7 @@ describe("ProductCatalog behavior", () => {
   const addToCartMock = vi.fn();
   const removeFromCartMock = vi.fn();
   const updateCartItemMock = vi.fn();
+  const updateCartItemPriceMock = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -45,6 +46,7 @@ describe("ProductCatalog behavior", () => {
       addToCart: addToCartMock,
       removeFromCart: removeFromCartMock,
       updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
       cart: [],
     });
 
@@ -203,6 +205,7 @@ describe("ProductCatalog behavior", () => {
       addToCart: addToCartMock,
       removeFromCart: removeFromCartMock,
       updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
       cart: [
         {
           id: "selected-1",
@@ -231,6 +234,7 @@ describe("ProductCatalog behavior", () => {
       addToCart: addToCartMock,
       removeFromCart: removeFromCartMock,
       updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
       cart: [
         {
           id: "selected-2",
@@ -255,6 +259,7 @@ describe("ProductCatalog behavior", () => {
       addToCart: addToCartMock,
       removeFromCart: removeFromCartMock,
       updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
       cart: [
         {
           id: "selected-3",
@@ -276,5 +281,70 @@ describe("ProductCatalog behavior", () => {
     fireEvent.change(quantityInput, { target: { value: "1.25" } });
 
     expect(updateCartItemMock).toHaveBeenCalledWith("selected-3", 1.25);
+  });
+
+  it("increments and decrements quantity from quick mode controls", async () => {
+    usePOSMock.mockReturnValue({
+      addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
+      cart: [
+        {
+          id: "selected-4",
+          productId: "prod-4",
+          name: "Selected Sugar",
+          quantity: 2,
+          price: 500,
+          tax: 0,
+          subtotal: 1000,
+        },
+      ],
+    });
+
+    render(<ProductCatalog quickMode={true} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "Increase quantity for Selected Sugar",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Decrease quantity for Selected Sugar",
+      }),
+    );
+
+    expect(updateCartItemMock).toHaveBeenCalledWith("selected-4", 3);
+    expect(updateCartItemMock).toHaveBeenCalledWith("selected-4", 1);
+  });
+
+  it("updates quick mode unit price inline", async () => {
+    usePOSMock.mockReturnValue({
+      addToCart: addToCartMock,
+      removeFromCart: removeFromCartMock,
+      updateCartItem: updateCartItemMock,
+      updateCartItemPrice: updateCartItemPriceMock,
+      cart: [
+        {
+          id: "selected-5",
+          productId: "prod-5",
+          name: "Selected Flour",
+          quantity: 1,
+          price: 1300,
+          tax: 0,
+          subtotal: 1300,
+        },
+      ],
+    });
+
+    render(<ProductCatalog quickMode={true} />);
+
+    const priceInput = await screen.findByLabelText(
+      "Unit price for Selected Flour",
+    );
+    fireEvent.change(priceInput, { target: { value: "1450.5" } });
+
+    expect(updateCartItemPriceMock).toHaveBeenCalledWith("selected-5", 1450.5);
   });
 });
