@@ -19,6 +19,7 @@ import { CartSummary } from "@/components/cart-summary";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogDescription,
@@ -52,6 +53,7 @@ import {
   formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
+import { printReceiptWeb } from "@/lib/print-receipt";
 import {
   isSubscriptionExpired,
   SUBSCRIPTION_EXPIRED_MESSAGE,
@@ -59,7 +61,7 @@ import {
 import { resolveBusinessForSale } from "@/lib/sale-context";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { toast } from "sonner";
-import type { Client, OrderDraft } from "@/lib/types";
+import type { Client, CompletedOrder, OrderDraft } from "@/lib/types";
 
 const LOG_PREFIX = "[CatalogSync]";
 const PAYMENT_METHODS: SalePaymentMethod[] = [
@@ -69,6 +71,27 @@ const PAYMENT_METHODS: SalePaymentMethod[] = [
   "Debit/Credit Card",
   "Advance",
 ];
+
+function getSettlementAmounts(total: number, paid: number) {
+  const safeTotal = Number.isFinite(total) ? Math.max(0, total) : 0;
+  const safePaid = Number.isFinite(paid) ? Math.max(0, paid) : 0;
+  return {
+    balanceDue: Math.max(0, safeTotal - safePaid),
+    change: Math.max(0, safePaid - safeTotal),
+  };
+}
+
+function resolveOrderAmountPaid(order: CompletedOrder): number {
+  const amountPaid = Number(order.sync.amountPaid);
+  if (Number.isFinite(amountPaid) && amountPaid >= 0) {
+    return amountPaid;
+  }
+  const firstPaymentAmount = Number(order.payments[0]?.amount);
+  if (Number.isFinite(firstPaymentAmount) && firstPaymentAmount >= 0) {
+    return firstPaymentAmount;
+  }
+  return Math.max(0, order.total);
+}
 
 export default function SellPage() {
   const {
@@ -106,6 +129,10 @@ export default function SellPage() {
   const [clientSearch, setClientSearch] = useState("");
   const [isLoadingClients, setIsLoadingClients] = useState(false);
   const [isCreatingSale, setIsCreatingSale] = useState(false);
+  const [showQuickModeReceiptDialog, setShowQuickModeReceiptDialog] =
+    useState(false);
+  const [quickModeReceiptOrder, setQuickModeReceiptOrder] =
+    useState<CompletedOrder | null>(null);
   const [catalogRefreshKey, setCatalogRefreshKey] = useState(0);
   const [isCatalogSyncing, setIsCatalogSyncing] = useState(false);
   const isSyncInFlight = useRef(false);
@@ -225,6 +252,10 @@ export default function SellPage() {
   const resolvedPaymentMethod = availablePaymentMethods.includes(paymentMethod)
     ? paymentMethod
     : "Cash";
+  const { balanceDue: liveBalanceDue, change: liveChange } = useMemo(
+    () => getSettlementAmounts(cartTotal, amountPaid),
+    [amountPaid, cartTotal],
+  );
 
   const handleCheckout = () => {
     if (cart.length === 0) {
@@ -304,8 +335,10 @@ export default function SellPage() {
       const resolvedCurrencyId = Number(
         currency?.id ?? resolvedBusiness.currency_id ?? 0,
       );
-      const balanceDue = Math.max(0, cartTotal - resolvedAmountPaid);
-      const change = Math.max(0, resolvedAmountPaid - cartTotal);
+      const { balanceDue, change } = getSettlementAmounts(
+        cartTotal,
+        resolvedAmountPaid,
+      );
 
       const isOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
@@ -355,8 +388,9 @@ export default function SellPage() {
         userId,
       };
 
+      let completedOrder: CompletedOrder;
       try {
-        await completeOrder(checkoutDraft, userId, {
+        completedOrder = await completeOrder(checkoutDraft, userId, {
           change,
           payments: [
             {
@@ -408,10 +442,43 @@ export default function SellPage() {
       setAmountPaid(0);
       setPaymentMethod("Cash");
       setClientSearch("");
+
+      if (isQuickMode) {
+        setQuickModeReceiptOrder(completedOrder);
+        setShowQuickModeReceiptDialog(true);
+      }
     } finally {
       isCreateSaleInFlight.current = false;
       setIsCreatingSale(false);
     }
+  };
+
+  const handlePrintQuickModeReceipt = () => {
+    if (!quickModeReceiptOrder) return;
+    const amountPaid = resolveOrderAmountPaid(quickModeReceiptOrder);
+    const balance = quickModeReceiptOrder.total - amountPaid;
+    const opened = printReceiptWeb({
+      items: quickModeReceiptOrder.items,
+      total: quickModeReceiptOrder.total,
+      currency: currency?.name ?? "",
+      receiptNumber: quickModeReceiptOrder.id,
+      amountPaid,
+      balance,
+      createdBy:
+        quickModeReceiptOrder.sync.createdBy ??
+        user?.name ??
+        user?.username ??
+        undefined,
+      type: "Sale",
+      timestamp: new Date(quickModeReceiptOrder.completedAt),
+      business,
+    });
+    if (!opened) {
+      window.alert("Please allow pop-ups in your browser to print receipts.");
+      return;
+    }
+    setShowQuickModeReceiptDialog(false);
+    setQuickModeReceiptOrder(null);
   };
 
   const handleSaveDraft = () => {
@@ -623,6 +690,9 @@ export default function SellPage() {
                 <Input
                   ref={amountPaidInputRef}
                   type="number"
+                  min={0}
+                  step="0.01"
+                  inputMode="decimal"
                   value={amountPaid || ""}
                   onChange={(e) => {
                     const parsed = Number(e.target.value);
@@ -633,10 +703,16 @@ export default function SellPage() {
                   placeholder="0.00"
                   className="text-lg"
                 />
-                {amountPaid < cartTotal ? (
+                {liveBalanceDue > 0 ? (
                   <p className="mt-2 text-xs text-amber-700">
-                    Balance due:{" "}
-                    {formatCurrency(cartTotal - amountPaid, currency)}
+                    Balance due: {formatCurrency(liveBalanceDue, currency)}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-600">No balance due</p>
+                )}
+                {liveChange > 0 ? (
+                  <p className="mt-1 text-xs text-green-700">
+                    Change: {formatCurrency(liveChange, currency)}
                   </p>
                 ) : null}
               </div>
@@ -684,11 +760,19 @@ export default function SellPage() {
                   </span>
                 </div>
 
-                {amountPaid >= cartTotal && (
+                {liveChange > 0 && (
                   <div className="flex justify-between text-sm bg-green-50 p-2 rounded border border-green-200">
                     <span className="text-green-700">Change:</span>
                     <span className="font-semibold text-green-700">
-                      {formatCurrency(amountPaid - cartTotal, currency)}
+                      {formatCurrency(liveChange, currency)}
+                    </span>
+                  </div>
+                )}
+                {liveBalanceDue > 0 && (
+                  <div className="flex justify-between text-sm bg-amber-50 p-2 rounded border border-amber-200">
+                    <span className="text-amber-700">Balance Due:</span>
+                    <span className="font-semibold text-amber-700">
+                      {formatCurrency(liveBalanceDue, currency)}
                     </span>
                   </div>
                 )}
@@ -712,6 +796,37 @@ export default function SellPage() {
               </div>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showQuickModeReceiptDialog}
+        onOpenChange={(open) => {
+          setShowQuickModeReceiptDialog(open);
+          if (!open) {
+            setQuickModeReceiptOrder(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Print Receipt</DialogTitle>
+            <DialogDescription>
+              Sale was saved successfully. Print receipt now?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowQuickModeReceiptDialog(false);
+                setQuickModeReceiptOrder(null);
+              }}
+            >
+              Not now
+            </Button>
+            <Button onClick={handlePrintQuickModeReceipt}>Print Receipt</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </POSLayout>

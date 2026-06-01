@@ -1,6 +1,6 @@
 {
   "name": "ebitabo_web",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "author": "Innosolve Tech",
   "description": "Ebtabo POS Desktop Application",
   "main": "electron/main.js",
