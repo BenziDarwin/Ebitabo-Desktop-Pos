@@ -252,6 +252,105 @@ describe("SellPage create-sale safeguards", () => {
     });
   });
 
+  it("records only total amount paid when customer overpays, while keeping change", async () => {
+    const activeBusiness = {
+      id: 12,
+      name: "Test Business",
+      account_type: "Sales Business",
+      currency_id: 1,
+      business_logo: null,
+      dateExpiry: "2099-01-01T00:00:00.000Z",
+      phone_numbers: [],
+      contact_details: null,
+      company_name: null,
+      company_address: null,
+      company_phone: null,
+      company_email: null,
+      apiUrl: "https://example.com",
+      userId: "9",
+    };
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: "9",
+        name: "Cashier",
+        username: "cashier",
+      },
+      business: activeBusiness,
+      currency: {
+        id: 1,
+        name: "USD",
+        symbol: "$",
+      },
+      isReady: true,
+      isAuthenticated: true,
+      fetchBusinessDetails: vi.fn(async () => activeBusiness),
+    });
+
+    vi.mocked(createSaleFromCart).mockResolvedValue({});
+    vi.mocked(completeOrder).mockResolvedValue({
+      id: "sale-2",
+      items: [],
+      subtotal: 120,
+      tax: 0,
+      total: 120,
+      discount: 0,
+      discountType: "amount",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      userId: "9",
+      payments: [],
+      change: 30,
+      completedAt: new Date(),
+      sync: {
+        status: "synced",
+        remoteSaleId: 999,
+        syncedAt: new Date(),
+        lastSyncError: null,
+        paymentMethod: "Cash",
+        amountPaid: 120,
+        currencyId: 1,
+        businessAccountType: "Sales Business",
+        businessUserId: "9",
+      },
+    });
+
+    render(<SellPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Checkout" }));
+    const amountPaidInput = await screen.findByPlaceholderText("0.00");
+    fireEvent.change(amountPaidInput, { target: { value: "150" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Create Sale" }));
+
+    await waitFor(() => {
+      expect(createSaleFromCart).toHaveBeenCalledTimes(1);
+      expect(completeOrder).toHaveBeenCalledTimes(1);
+    });
+
+    expect(createSaleFromCart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountPaid: 120,
+      }),
+    );
+
+    expect(completeOrder).toHaveBeenCalledWith(
+      expect.any(Object),
+      "9",
+      expect.objectContaining({
+        change: 30,
+        payments: [
+          expect.objectContaining({
+            amount: 120,
+          }),
+        ],
+        sync: expect.objectContaining({
+          amountPaid: 120,
+        }),
+      }),
+    );
+  });
+
   it("in quick mode shows receipt print dialog even when sale is pending sync", async () => {
     const activeBusiness = {
       id: 12,

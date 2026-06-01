@@ -331,6 +331,7 @@ export default function SellPage() {
 
       const resolvedAmountPaid = resolveLatestAmountPaid();
       setAmountPaid(resolvedAmountPaid);
+      const recordedAmountPaid = Math.min(resolvedAmountPaid, cartTotal);
 
       const resolvedCurrencyId = Number(
         currency?.id ?? resolvedBusiness.currency_id ?? 0,
@@ -355,7 +356,7 @@ export default function SellPage() {
             cart,
             client: selectedClient,
             paymentMethod: resolvedPaymentMethod,
-            amountPaid: resolvedAmountPaid,
+            amountPaid: recordedAmountPaid,
             currencyId: resolvedCurrencyId,
             subtotal: cartSubtotal,
             discount,
@@ -395,7 +396,7 @@ export default function SellPage() {
           payments: [
             {
               method: resolvedPaymentMethod,
-              amount: resolvedAmountPaid,
+              amount: recordedAmountPaid,
               date: new Date().toISOString(),
             },
           ],
@@ -405,7 +406,7 @@ export default function SellPage() {
             syncedAt: remoteCreateFailed ? null : new Date(),
             lastSyncError: remoteCreateFailed ? remoteCreateError : null,
             paymentMethod: resolvedPaymentMethod,
-            amountPaid: resolvedAmountPaid,
+            amountPaid: recordedAmountPaid,
             currencyId: resolvedCurrencyId,
             businessAccountType: resolvedBusiness.account_type,
             businessUserId: resolvedBusiness.userId,
