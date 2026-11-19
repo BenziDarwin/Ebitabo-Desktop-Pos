@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuth } from "@/provider/auth-provider";
 import appLogo from "@/assets/images/logo.png";
 import homepageImage from "@/assets/images/homepage.jpg";
@@ -72,6 +72,79 @@ export default function LoginPage() {
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (
+      process.env.NODE_ENV !== "production" &&
+      typeof window !== "undefined" &&
+      window.location.search.includes("mock=true")
+    ) {
+      Storage.setItem(STORAGE_KEYS.clientUrl, "http://localhost:3000");
+      Storage.setItem(STORAGE_KEYS.apiKey, "mock-api-key");
+      Storage.setItem(STORAGE_KEYS.userId, "1");
+      Storage.setJson(STORAGE_KEYS.user, {
+        id: "1",
+        name: "John Doe",
+        username: "johndoe",
+      });
+      Storage.setJson(STORAGE_KEYS.businessDetails, {
+        id: 1,
+        name: "Ebitabo Store",
+        company_name: "Ebitabo Ltd",
+        account_type: "Sales Business",
+        currency_id: 1,
+        userId: "1",
+      });
+      Storage.setJson(STORAGE_KEYS.currencyDetails, {
+        id: 1,
+        name: "UGX",
+        symbol: "UGX",
+        rate: 1,
+      });
+      Storage.setJson(STORAGE_KEYS.catalogProducts, [
+        {
+          id: "1",
+          name: "Activated Charcoal",
+          price: 24000,
+          stock: 50,
+          barcode: "12345",
+        },
+        {
+          id: "2",
+          name: "Acetylsalicylic Acid",
+          price: 48000,
+          stock: 30,
+          barcode: "67890",
+        },
+      ]);
+      Storage.setJson(STORAGE_KEYS.orderDrafts, [
+        {
+          id: "draft-999",
+          items: [
+            {
+              id: "1",
+              productId: "1",
+              name: "Activated Charcoal",
+              quantity: 2,
+              price: 24000,
+              tax: 0,
+              subtotal: 48000,
+            },
+          ],
+          subtotal: 48000,
+          tax: 0,
+          total: 48000,
+          discount: 0,
+          discountType: "percent",
+          servedBy: "Jane Waiter",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          userId: "1",
+        },
+      ]);
+      window.location.href = "/sell";
+    }
+  }, []);
 
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault();

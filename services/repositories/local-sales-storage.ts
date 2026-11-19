@@ -106,7 +106,17 @@ function fromSerialized(order: SerializedCompletedOrder): CompletedOrder {
         typeof order.sync?.createdBy === "string"
           ? order.sync.createdBy
           : undefined,
+      servedBy:
+        typeof order.sync?.servedBy === "string"
+          ? order.sync.servedBy
+          : undefined,
     },
+    servedBy:
+      typeof (order as any).servedBy === "string"
+        ? (order as any).servedBy
+        : typeof order.sync?.servedBy === "string"
+          ? order.sync.servedBy
+          : undefined,
   };
 }
 

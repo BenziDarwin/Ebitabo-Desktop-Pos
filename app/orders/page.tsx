@@ -240,13 +240,25 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  {/* Client Info */}
-                  {draft.client && (
-                    <div className="mb-4 p-2 bg-blue-50 rounded border border-blue-200">
-                      <p className="text-xs text-blue-900">
-                        <span className="font-semibold">Client:</span>{" "}
-                        {draft.client.name}
-                      </p>
+                  {/* Client & Served By Info */}
+                  {(draft.client || draft.servedBy) && (
+                    <div className="mb-4 space-y-1">
+                      {draft.client && (
+                        <div className="p-2 bg-blue-50 rounded border border-blue-200">
+                          <p className="text-xs text-blue-900">
+                            <span className="font-semibold">Client:</span>{" "}
+                            {draft.client.name}
+                          </p>
+                        </div>
+                      )}
+                      {draft.servedBy && (
+                        <div className="p-2 bg-slate-50 rounded border border-slate-200">
+                          <p className="text-xs text-slate-700">
+                            <span className="font-semibold">Served by:</span>{" "}
+                            {draft.servedBy}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
 

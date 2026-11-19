@@ -89,7 +89,9 @@ export class LocalOrderRepository implements OrderRepository {
         businessAccountType: options?.sync?.businessAccountType ?? null,
         businessUserId: String(options?.sync?.businessUserId ?? userId),
         createdBy: options?.sync?.createdBy,
+        servedBy: options?.sync?.servedBy ?? order.servedBy,
       },
+      servedBy: options?.sync?.servedBy ?? order.servedBy,
     };
 
     const records = readLocalSalesRecords();

@@ -20,6 +20,7 @@ interface ReceiptProps {
   clientName?: string;
   notes?: string;
   cashierName?: string;
+  servedBy?: string;
   paymentMethod?: string;
   timestamp?: Date;
 }
@@ -35,6 +36,7 @@ export function Receipt({
   clientName,
   notes,
   cashierName,
+  servedBy,
   paymentMethod,
   timestamp,
 }: ReceiptProps) {
@@ -70,7 +72,11 @@ export function Receipt({
               {new Date(timestamp).toLocaleTimeString()}
             </p>
           )}
-          {cashierName && <p>Cashier: {cashierName}</p>}
+          {servedBy ? (
+            <p>Served by: {servedBy}</p>
+          ) : cashierName ? (
+            <p>Cashier: {cashierName}</p>
+          ) : null}
           {clientName && <p>Customer: {clientName}</p>}
         </div>
 

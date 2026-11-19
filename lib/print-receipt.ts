@@ -10,6 +10,7 @@ interface WebReceiptPrintData {
   amountPaid?: number;
   balance?: number;
   createdBy?: string;
+  servedBy?: string;
   type: string;
   timestamp?: Date;
   business?: BusinessDetails | null;
@@ -32,6 +33,7 @@ export function generateReceiptHtml({
   amountPaid,
   balance,
   createdBy,
+  servedBy,
   type,
   timestamp,
   business,
@@ -47,6 +49,7 @@ export function generateReceiptHtml({
   const shouldShowPaymentSummary =
     isSaleReceipt && (amountPaid !== undefined || balance !== undefined);
   const createdByText = createdBy?.trim();
+  const servedByText = servedBy?.trim();
   const logoSrc = business?.business_logo
     ? `data:image/png;base64,${business.business_logo}`
     : appLogo.src;
@@ -256,14 +259,21 @@ export function generateReceiptHtml({
         <strong>${escapeHtml(receiptNo)}</strong>
       </div>
       ${
-        createdByText
+        servedByText
           ? `
       <div class="receipt-info-row">
-        <span>Made By</span>
+        <span>Served By</span>
+        <strong>${escapeHtml(servedByText)}</strong>
+      </div>
+      `
+          : createdByText
+            ? `
+      <div class="receipt-info-row">
+        <span>Served By</span>
         <strong>${escapeHtml(createdByText)}</strong>
       </div>
       `
-          : ""
+            : ""
       }
     </div>
 

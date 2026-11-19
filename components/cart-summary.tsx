@@ -386,6 +386,11 @@ export function CartSummary({
                           {new Date(draft.updatedAt).toLocaleDateString()}{" "}
                           {new Date(draft.updatedAt).toLocaleTimeString()}
                         </p>
+                        {draft.servedBy && (
+                          <p className="text-xs text-slate-600 italic">
+                            Served by: {draft.servedBy}
+                          </p>
+                        )}
                       </div>
                       <Button
                         size="sm"

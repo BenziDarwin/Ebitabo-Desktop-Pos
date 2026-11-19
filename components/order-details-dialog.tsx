@@ -72,6 +72,18 @@ function resolveCreatedBy(
   return undefined;
 }
 
+function resolveServedBy(
+  order: OrderDraft | CompletedOrder,
+): string | undefined {
+  if (order.servedBy?.trim()) {
+    return order.servedBy.trim();
+  }
+  if ("sync" in order && order.sync.servedBy?.trim()) {
+    return order.sync.servedBy.trim();
+  }
+  return undefined;
+}
+
 export function OrderDetailsDialog({
   open,
   order,
@@ -113,6 +125,7 @@ export function OrderDetailsDialog({
     const amountPaid = resolvePaidAmount(order);
     const balance = order.total - amountPaid;
     const createdBy = resolveCreatedBy(order);
+    const servedBy = resolveServedBy(order);
     const opened = printReceiptWeb({
       items: order.items,
       total: order.total,
@@ -121,6 +134,7 @@ export function OrderDetailsDialog({
       amountPaid,
       balance,
       createdBy,
+      servedBy,
       type: isCompletedOrder ? "Sale" : "Order",
       timestamp: new Date(order.createdAt),
       business,
@@ -242,13 +256,27 @@ export function OrderDetailsDialog({
         </DialogHeader>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 pb-6">
-          {/* Client Info */}
-          {order.client && (
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-              <p className="text-sm font-medium text-slate-900">
-                Customer:{" "}
-                <span className="font-semibold">{order.client.name}</span>
-              </p>
+          {/* Metadata: Client & Served By */}
+          {(order.client || resolveServedBy(order)) && (
+            <div className="flex flex-wrap gap-4">
+              {order.client && (
+                <div className="flex-1 min-w-[200px] bg-slate-50 p-4 rounded-lg border border-slate-200">
+                  <p className="text-sm font-medium text-slate-900">
+                    Customer:{" "}
+                    <span className="font-semibold">{order.client.name}</span>
+                  </p>
+                </div>
+              )}
+              {resolveServedBy(order) && (
+                <div className="flex-1 min-w-[200px] bg-blue-50/60 p-4 rounded-lg border border-blue-100">
+                  <p className="text-sm font-medium text-slate-900">
+                    Served by:{" "}
+                    <span className="font-semibold text-blue-900">
+                      {resolveServedBy(order)}
+                    </span>
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

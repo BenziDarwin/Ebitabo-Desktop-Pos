@@ -12,11 +12,7 @@ export interface CartItem {
 }
 
 export type SalePaymentMethod =
-  | "Cash"
-  | "Mobile Money"
-  | "Bank Transfer"
-  | "Debit/Credit Card"
-  | "Advance";
+  "Cash" | "Mobile Money" | "Bank Transfer" | "Debit/Credit Card" | "Advance";
 
 export interface Payment {
   method: SalePaymentMethod;
@@ -37,6 +33,7 @@ export interface SaleSyncMetadata {
   businessAccountType?: string | null;
   businessUserId: string;
   createdBy?: string;
+  servedBy?: string;
 }
 
 export interface OrderDraft {
@@ -49,6 +46,7 @@ export interface OrderDraft {
   discount: number;
   discountType: "amount" | "percent";
   notes?: string;
+  servedBy?: string;
   createdAt: Date;
   updatedAt: Date;
   userId: string;
@@ -59,6 +57,7 @@ export interface CompletedOrder extends OrderDraft {
   change: number;
   completedAt: Date;
   sync: SaleSyncMetadata;
+  servedBy?: string;
   receipt?: string;
 }
 

@@ -642,11 +642,7 @@ export interface SaleRecord {
 
 export interface PaymentLine {
   modePayment:
-    | "Cash"
-    | "Mobile Money"
-    | "Bank Transfer"
-    | "Debit/Credit Card"
-    | "Advance";
+    "Cash" | "Mobile Money" | "Bank Transfer" | "Debit/Credit Card" | "Advance";
   datePayment: string;
   advancedAmount: number;
   amountPaid: number;

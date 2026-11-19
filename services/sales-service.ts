@@ -92,6 +92,7 @@ interface CreateSaleFromCartInput {
   discount: number;
   discountType: "amount" | "percent";
   createdBy?: string;
+  servedBy?: string;
 }
 
 const CREATE_SALE_FIELDS = ["id", "client_id", "reference"];
@@ -402,9 +403,16 @@ export async function createSaleFromCart(
     input.subtotal,
   );
   const createUid = mapCreateUid(input.business.userId);
-  const description = input.createdBy?.trim()
-    ? `Created By ${input.createdBy.trim()}`
-    : undefined;
+  const servedByText = input.servedBy?.trim();
+  const createdByText = input.createdBy?.trim();
+  let description: string | undefined = undefined;
+  if (createdByText && servedByText) {
+    description = `Created By ${createdByText} (Served by ${servedByText})`;
+  } else if (createdByText) {
+    description = `Created By ${createdByText}`;
+  } else if (servedByText) {
+    description = `Served by ${servedByText}`;
+  }
 
   if (isSalesBusiness(input.business.account_type)) {
     const productItems = input.cart.filter((item) => Boolean(item.productId));

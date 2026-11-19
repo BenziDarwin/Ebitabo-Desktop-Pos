@@ -124,6 +124,7 @@ export default function SellPage() {
   const [isClientPickerOpen, setIsClientPickerOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<SalePaymentMethod>("Cash");
   const [amountPaid, setAmountPaid] = useState(0);
+  const [servedBy, setServedBy] = useState("");
   const amountPaidInputRef = useRef<HTMLInputElement | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [clientSearch, setClientSearch] = useState("");
@@ -348,6 +349,7 @@ export default function SellPage() {
         ? "No internet connection."
         : null;
       let remoteSaleId: number | null = null;
+      const resolvedServedBy = servedBy.trim() || undefined;
 
       if (!isOffline) {
         try {
@@ -362,6 +364,7 @@ export default function SellPage() {
             discount,
             discountType,
             createdBy: user?.name || user?.username,
+            servedBy: resolvedServedBy,
           });
           remoteSaleId = extractRemoteSaleId(remoteResponse);
         } catch (error) {
@@ -384,6 +387,7 @@ export default function SellPage() {
         discount,
         discountType,
         notes: orderNotes,
+        servedBy: resolvedServedBy,
         createdAt: new Date(),
         updatedAt: new Date(),
         userId,
@@ -411,6 +415,7 @@ export default function SellPage() {
             businessAccountType: resolvedBusiness.account_type,
             businessUserId: resolvedBusiness.userId,
             createdBy: user?.name || user?.username,
+            servedBy: resolvedServedBy,
           },
         });
       } catch (error) {
@@ -470,6 +475,10 @@ export default function SellPage() {
         user?.name ??
         user?.username ??
         undefined,
+      servedBy:
+        quickModeReceiptOrder.servedBy ??
+        quickModeReceiptOrder.sync.servedBy ??
+        undefined,
       type: "Sale",
       timestamp: new Date(quickModeReceiptOrder.completedAt),
       business,
@@ -501,6 +510,7 @@ export default function SellPage() {
       discount,
       discountType,
       notes: orderNotes || activeDraft?.notes || undefined,
+      servedBy: servedBy.trim() || activeDraft?.servedBy || undefined,
       createdAt: activeDraft?.createdAt ?? new Date(),
       updatedAt: new Date(),
       userId: user?.id || business?.userId || "",
@@ -509,6 +519,7 @@ export default function SellPage() {
     saveOrderDraft(draft);
     toast.success(activeDraft ? "Draft updated" : "Draft saved");
     clearCart();
+    setServedBy("");
   };
 
   return (
@@ -648,6 +659,20 @@ export default function SellPage() {
                     Selected: {selectedClient.name}
                   </p>
                 )}
+              </div>
+
+              {/* Served By Option */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-2">
+                  Served By
+                </label>
+                <Input
+                  type="text"
+                  value={servedBy}
+                  onChange={(e) => setServedBy(e.target.value)}
+                  placeholder="Staff / Waiter / Attendant name (optional)"
+                  className="w-full"
+                />
               </div>
 
               {/* Payment Method */}

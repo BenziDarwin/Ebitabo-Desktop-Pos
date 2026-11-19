@@ -161,6 +161,7 @@ export async function syncPendingTransactions(
           discount: order.discount,
           discountType: order.discountType,
           createdBy: order.sync.createdBy ?? options.createdBy,
+          servedBy: order.servedBy ?? order.sync.servedBy,
         });
         const remoteSaleId = extractRemoteSaleId(response);
         nextRecords[index] = markSynced(order, remoteSaleId);
