@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
+import { normalizeClientUrl } from "@/services/repositories/remote-endpoint";
 import { Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 
@@ -165,7 +166,8 @@ export default function LoginPage() {
       return;
     }
 
-    const success = await login(url, username, password);
+    const normalizedUrl = normalizeClientUrl(url);
+    const success = await login(normalizedUrl, username, password);
     if (success) {
       toast.success("Login successful");
       router.push("/sell");
