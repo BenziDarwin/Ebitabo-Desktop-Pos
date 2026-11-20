@@ -128,7 +128,7 @@
     "win": {
       "target": "nsis",
       "icon": "icon.ico",
-      "signAndEditExecutable": true
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,
