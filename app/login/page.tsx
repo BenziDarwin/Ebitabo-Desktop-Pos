@@ -297,23 +297,13 @@ export default function LoginPage() {
               </div>
             )}
 
-            <div className="flex flex-wrap gap-4 pt-3">
+            <div className="pt-3">
               <Button
                 type="submit"
                 disabled={isLoading}
-                className="h-[54px] min-w-[140px] rounded-none bg-[#3751fe] px-8 text-base font-semibold hover:bg-[#2f44d5]"
+                className="h-[54px] w-full rounded-none bg-[#3751fe] px-8 text-base font-semibold hover:bg-[#2f44d5]"
               >
                 {isLoading ? "Logging in..." : "Login"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="h-[54px] min-w-[140px] rounded-none border-[#3751fe] px-8 text-base font-semibold text-[#3751fe] hover:bg-[#eef1ff]"
-                onClick={() =>
-                  toast.info("Use your assigned cashier account to login.")
-                }
-              >
-                Sign Up
               </Button>
             </div>
           </form>
