@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { OrderDetailsDialog } from "@/components/order-details-dialog";
-import { Trash2, Eye, Plus, FileText } from "lucide-react";
+import { Trash2, Eye, Plus, FileText, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/format-currency";
@@ -23,24 +23,38 @@ import {
   formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
+import { sendOrderStatus } from "@/services/remote-order-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
 
 export default function OrdersPage() {
-  const { currency } = useAuth();
+  const { user, business, currency } = useAuth();
   const router = useRouter();
   const {
     orderDrafts,
     loadOrderDraft,
-    deleteOrderDraft,
+    markOrderDraftCancelled,
+    restoreOrderDraft,
     clearCart,
     saveOrderDraft,
   } = usePOS();
 
+  const [currentTab, setCurrentTab] = useState<"active" | "deleted">("active");
   const [selectedDraft, setSelectedDraft] = useState<OrderDraft | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(
     null,
   );
   const [showDetails, setShowDetails] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+
+  const activeDrafts = orderDrafts.filter(
+    (draft) => draft.state !== "cancelled",
+  );
+  const deletedDrafts = orderDrafts.filter(
+    (draft) => draft.state === "cancelled",
+  );
+  const displayedDrafts =
+    currentTab === "active" ? activeDrafts : deletedDrafts;
 
   const handleViewDetails = (draft: OrderDraft) => {
     setSelectedDraft(draft);
@@ -110,11 +124,61 @@ export default function OrdersPage() {
     router.push("/sell");
   };
 
-  const handleDeleteDraft = (draftId: string) => {
-    deleteOrderDraft(draftId);
-    setShowDeleteConfirm(null);
-    setShowDetails(false);
-    toast.success("Draft deleted");
+  const handleDeleteDraft = async (draftId: string) => {
+    const target = orderDrafts.find((d) => d.id === draftId);
+    if (!target) return;
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error(
+        "Offline Action Blocked: Deleting an order requires an active internet connection to synchronize the cancellation with the server.",
+      );
+      return;
+    }
+
+    try {
+      setIsDeleting(true);
+      await sendOrderStatus(target, "cancelled", {
+        servedBy: target.servedBy || user?.name || user?.username || "Staff",
+        userId: Number(user?.id || business?.userId || 1),
+      });
+
+      markOrderDraftCancelled(draftId);
+      setShowDeleteConfirm(null);
+      setShowDetails(false);
+      toast.success("Order cancelled on server and moved to Deleted tab");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Server error";
+      toast.error(
+        `Cancellation failed: ${msg}. The order has not been deleted.`,
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleRestoreDraft = async (draft: OrderDraft) => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      toast.error(
+        "Offline Action Blocked: Restoring an order requires an active internet connection to synchronize with the server.",
+      );
+      return;
+    }
+
+    try {
+      setIsRestoring(true);
+      await sendOrderStatus(draft, "completed", {
+        servedBy: draft.servedBy || user?.name || user?.username || "Staff",
+        userId: Number(user?.id || business?.userId || 1),
+      });
+
+      restoreOrderDraft(draft.id);
+      toast.success("Order restored back to Saved orders");
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : "Server error";
+      toast.error(`Restore failed: ${msg}`);
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const handleNewOrder = () => {
@@ -126,10 +190,12 @@ export default function OrdersPage() {
     <POSLayout currentPage="orders">
       <div className="max-w-7xl mx-auto p-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-3xl font-bold text-slate-900">Saved Orders</h1>
-            <p className="text-slate-600 mt-1">Manage your draft orders</p>
+            <h1 className="text-3xl font-bold text-slate-900">Orders</h1>
+            <p className="text-slate-600 mt-1">
+              Manage active and deleted orders with server synchronization
+            </p>
           </div>
           <Button
             onClick={handleNewOrder}
@@ -140,39 +206,90 @@ export default function OrdersPage() {
           </Button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex space-x-2 border-b border-slate-200 mb-6">
+          <button
+            onClick={() => setCurrentTab("active")}
+            className={`pb-3 px-4 font-semibold text-sm border-b-2 transition-colors ${
+              currentTab === "active"
+                ? "border-blue-600 text-blue-600"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Saved Orders ({activeDrafts.length})
+          </button>
+          <button
+            onClick={() => setCurrentTab("deleted")}
+            className={`pb-3 px-4 font-semibold text-sm border-b-2 transition-colors ${
+              currentTab === "deleted"
+                ? "border-red-600 text-red-600"
+                : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            Deleted Orders ({deletedDrafts.length})
+          </button>
+        </div>
+
         {/* Orders Grid */}
-        {orderDrafts.length === 0 ? (
+        {displayedDrafts.length === 0 ? (
           <div className="bg-white rounded-lg border border-slate-200 p-12 text-center">
             <FileText className="w-16 h-16 text-slate-300 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-slate-900 mb-2">
-              No saved orders
+              {currentTab === "active"
+                ? "No saved orders"
+                : "No deleted orders"}
             </h3>
             <p className="text-slate-600 mb-6">
-              Start a new order or save drafts from the sell screen
+              {currentTab === "active"
+                ? "Start a new order or save drafts from the sell screen"
+                : "Cancelled orders synced with the server will appear here"}
             </p>
-            <Button
-              onClick={handleNewOrder}
-              className="bg-blue-600 hover:bg-blue-700"
-            >
-              Create Order
-            </Button>
+            {currentTab === "active" && (
+              <Button
+                onClick={handleNewOrder}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Create Order
+              </Button>
+            )}
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {orderDrafts.map((draft) => (
+            {displayedDrafts.map((draft) => (
               <div
                 key={draft.id}
-                className="bg-white rounded-lg border border-slate-200 overflow-hidden hover:shadow-lg transition-shadow"
+                className={`bg-white rounded-lg border overflow-hidden hover:shadow-lg transition-shadow ${
+                  draft.state === "cancelled"
+                    ? "border-red-200 bg-red-50/20"
+                    : "border-slate-200"
+                }`}
               >
                 {/* Draft Header */}
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 border-b border-slate-200">
-                  <h3 className="font-bold text-slate-900 truncate">
-                    {draft.notes || `Order ${draft.id.slice(-8)}`}
-                  </h3>
-                  <p className="text-xs text-slate-600 mt-1">
-                    {new Date(draft.createdAt).toLocaleDateString()} at{" "}
-                    {new Date(draft.createdAt).toLocaleTimeString()}
-                  </p>
+                <div
+                  className={`p-4 border-b flex items-start justify-between ${
+                    draft.state === "cancelled"
+                      ? "bg-red-50 border-red-200"
+                      : "bg-gradient-to-r from-blue-50 to-blue-100 border-slate-200"
+                  }`}
+                >
+                  <div className="min-w-0 pr-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-900 truncate">
+                        {draft.reference ||
+                          draft.notes ||
+                          `Order ${draft.id.slice(-8)}`}
+                      </h3>
+                      {draft.state === "cancelled" && (
+                        <span className="px-2 py-0.5 text-xs font-semibold rounded bg-red-100 text-red-700">
+                          Deleted
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-600 mt-1">
+                      {new Date(draft.createdAt).toLocaleDateString()} at{" "}
+                      {new Date(draft.createdAt).toLocaleTimeString()}
+                    </p>
+                  </div>
                 </div>
 
                 {/* Draft Content */}
@@ -234,7 +351,13 @@ export default function OrdersPage() {
                     )}
                     <div className="border-t border-slate-200 pt-1 flex justify-between font-bold">
                       <span>Total:</span>
-                      <span className="text-blue-600">
+                      <span
+                        className={
+                          draft.state === "cancelled"
+                            ? "text-red-600"
+                            : "text-blue-600"
+                        }
+                      >
                         {formatCurrency(draft.total, currency)}
                       </span>
                     </div>
@@ -263,32 +386,54 @@ export default function OrdersPage() {
                   )}
 
                   {/* Actions */}
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      onClick={() => handleViewDetails(draft)}
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Eye className="w-4 h-4 mr-1" />
-                      View
-                    </Button>
-                    <Button
-                      onClick={() => handleLoadDraft(draft.id)}
-                      className="bg-blue-600 hover:bg-blue-700"
-                      size="sm"
-                    >
-                      <Plus className="w-4 h-4 mr-1" />
-                      Resume
-                    </Button>
-                    <Button
-                      onClick={() => setShowDeleteConfirm(draft.id)}
-                      variant="destructive"
-                      size="sm"
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" />
-                      Delete
-                    </Button>
-                  </div>
+                  {draft.state === "cancelled" ? (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        onClick={() => handleViewDetails(draft)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                      <Button
+                        onClick={() => handleRestoreDraft(draft)}
+                        disabled={isRestoring}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                        size="sm"
+                      >
+                        <RotateCcw className="w-4 h-4 mr-1" />
+                        Restore
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      <Button
+                        onClick={() => handleViewDetails(draft)}
+                        variant="outline"
+                        size="sm"
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        View
+                      </Button>
+                      <Button
+                        onClick={() => handleLoadDraft(draft.id)}
+                        className="bg-blue-600 hover:bg-blue-700"
+                        size="sm"
+                      >
+                        <Plus className="w-4 h-4 mr-1" />
+                        Resume
+                      </Button>
+                      <Button
+                        onClick={() => setShowDeleteConfirm(draft.id)}
+                        variant="destructive"
+                        size="sm"
+                      >
+                        <Trash2 className="w-4 h-4 mr-1" />
+                        Delete
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
@@ -306,7 +451,7 @@ export default function OrdersPage() {
         }}
         onAddItems={handleAddItemsToDraft}
         onContinueEditing={handleContinueEditingDraft}
-        showAddItems={true}
+        showAddItems={selectedDraft?.state !== "cancelled"}
       />
 
       {/* Delete Confirmation Dialog */}
@@ -316,16 +461,17 @@ export default function OrdersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Draft?</DialogTitle>
+            <DialogTitle>Delete Order?</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. The draft will be permanently
-              deleted.
+              Deleting requires active internet connection. This will cancel the
+              order on the server and move it to the Deleted tab.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-2">
             <Button
               onClick={() => setShowDeleteConfirm(null)}
               variant="outline"
+              disabled={isDeleting}
             >
               Cancel
             </Button>
@@ -334,8 +480,9 @@ export default function OrdersPage() {
                 showDeleteConfirm && handleDeleteDraft(showDeleteConfirm)
               }
               variant="destructive"
+              disabled={isDeleting}
             >
-              Delete
+              {isDeleting ? "Cancelling..." : "Delete Order"}
             </Button>
           </div>
         </DialogContent>

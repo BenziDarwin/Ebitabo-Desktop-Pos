@@ -112,8 +112,8 @@ function fromSerialized(order: SerializedCompletedOrder): CompletedOrder {
           : undefined,
     },
     servedBy:
-      typeof (order as any).servedBy === "string"
-        ? (order as any).servedBy
+      typeof (order as Record<string, unknown>).servedBy === "string"
+        ? ((order as Record<string, unknown>).servedBy as string)
         : typeof order.sync?.servedBy === "string"
           ? order.sync.servedBy
           : undefined,

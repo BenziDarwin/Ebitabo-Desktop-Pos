@@ -36,8 +36,12 @@ export interface SaleSyncMetadata {
   servedBy?: string;
 }
 
+export type OrderDraftState = "created" | "completed" | "cancelled";
+
 export interface OrderDraft {
   id: string;
+  reference?: string;
+  state?: OrderDraftState;
   items: CartItem[];
   client?: Client;
   subtotal: number;

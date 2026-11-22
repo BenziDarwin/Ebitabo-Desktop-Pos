@@ -13,6 +13,7 @@ import {
   getCachedBusinessClients,
   type SalePaymentMethod,
 } from "@/services/sales-service";
+import { sendOrderStatus } from "@/services/remote-order-service";
 import { POSLayout } from "@/components/pos-layout";
 import { ProductCatalog } from "@/components/product-catalog";
 import { CartSummary } from "@/components/cart-summary";
@@ -377,8 +378,16 @@ export default function SellPage() {
         }
       }
 
+      const activeDraft = activeDraftId
+        ? orderDrafts.find((d) => d.id === activeDraftId)
+        : null;
+
       const checkoutDraft: OrderDraft = {
         id: `sale-${Date.now()}`,
+        reference:
+          activeDraft?.reference ||
+          `SaleRCTm-${String(Math.floor(Math.random() * 900000) + 100000)}`,
+        state: "completed",
         items: cart,
         client: selectedClient || undefined,
         subtotal: cartSubtotal,
@@ -422,6 +431,17 @@ export default function SellPage() {
         console.error("Failed to persist local sale", error);
         toast.error("Failed to save sale locally. Please try again.");
         return;
+      }
+
+      if (!isOffline) {
+        try {
+          await sendOrderStatus(checkoutDraft, "completed", {
+            servedBy: resolvedServedBy,
+            userId: Number(userId) || 1,
+          });
+        } catch (orderSyncError) {
+          console.warn("eb_pos.order completed sync error:", orderSyncError);
+        }
       }
 
       if (remoteCreateFailed) {
@@ -502,6 +522,10 @@ export default function SellPage() {
 
     const draft: OrderDraft = {
       id: activeDraft?.id ?? `draft-${Date.now()}`,
+      reference:
+        activeDraft?.reference ??
+        `OrderRCTm-${String(Math.floor(Math.random() * 900000) + 100000)}`,
+      state: "created",
       items: cart,
       client: selectedClient || undefined,
       subtotal: cartSubtotal,

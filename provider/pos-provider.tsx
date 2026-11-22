@@ -26,6 +26,8 @@ interface POSContextType {
   saveOrderDraft: (draft: OrderDraft) => void;
   loadOrderDraft: (draftId: string) => void;
   deleteOrderDraft: (draftId: string) => void;
+  markOrderDraftCancelled: (draftId: string) => void;
+  restoreOrderDraft: (draftId: string) => void;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
 }
@@ -108,19 +110,26 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
   }, [activeDraftId]);
 
   const saveOrderDraft = (draft: OrderDraft) => {
+    const enrichedDraft: OrderDraft = {
+      ...draft,
+      reference:
+        draft.reference ||
+        `OrderRCTm-${String(Math.floor(Math.random() * 900000) + 100000)}`,
+      state: draft.state || "created",
+    };
     setOrderDrafts((previousDrafts) => {
       const draftIndex = previousDrafts.findIndex(
-        (existingDraft) => existingDraft.id === draft.id,
+        (existingDraft) => existingDraft.id === enrichedDraft.id,
       );
       if (draftIndex === -1) {
-        return [...previousDrafts, draft];
+        return [...previousDrafts, enrichedDraft];
       }
 
       const nextDrafts = [...previousDrafts];
-      nextDrafts[draftIndex] = draft;
+      nextDrafts[draftIndex] = enrichedDraft;
       return nextDrafts;
     });
-    setActiveDraftId(draft.id);
+    setActiveDraftId(enrichedDraft.id);
   };
 
   const loadOrderDraft = (draftId: string) => {
@@ -141,6 +150,25 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
     }
+  };
+
+  const markOrderDraftCancelled = (draftId: string) => {
+    setOrderDrafts((previousDrafts) =>
+      previousDrafts.map((draft) =>
+        draft.id === draftId ? { ...draft, state: "cancelled" } : draft,
+      ),
+    );
+    if (activeDraftId === draftId) {
+      setActiveDraftId(null);
+    }
+  };
+
+  const restoreOrderDraft = (draftId: string) => {
+    setOrderDrafts((previousDrafts) =>
+      previousDrafts.map((draft) =>
+        draft.id === draftId ? { ...draft, state: "created" } : draft,
+      ),
+    );
   };
 
   const clearCart = () => {
@@ -170,6 +198,8 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         saveOrderDraft,
         loadOrderDraft,
         deleteOrderDraft,
+        markOrderDraftCancelled,
+        restoreOrderDraft,
         orderNotes,
         setOrderNotes,
       }}
