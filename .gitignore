@@ -21,6 +21,7 @@
 
 # production
 /build
+!build/icon.ico
 
 # misc
 .DS_Store

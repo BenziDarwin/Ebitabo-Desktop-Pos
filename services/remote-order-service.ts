@@ -1,7 +1,10 @@
 import type { OrderDraft } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
-import { sendRequestModel } from "@/services/repositories/send-request";
+import {
+  sendRequestModel,
+  type SendRequestPayload,
+} from "@/services/repositories/send-request";
 
 export interface EbPosOrderLine {
   item_type: "Product" | "Service";
@@ -114,7 +117,7 @@ export async function sendOrderStatus(
 
   const records = await sendRequestModel(
     "eb_pos.order",
-    payload as unknown as Record<string, unknown>,
+    payload as unknown as SendRequestPayload,
   );
   if (!records || records.length === 0) {
     throw new Error(

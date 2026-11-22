@@ -7,7 +7,7 @@ import {
 
 const LOG_PREFIX = "[CatalogSync]";
 
-interface SendRequestPayload {
+export interface SendRequestPayload {
   fields: string[];
   values?: Record<string, unknown>;
   function?: string;
