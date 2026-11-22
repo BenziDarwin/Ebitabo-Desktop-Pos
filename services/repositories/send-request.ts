@@ -53,10 +53,13 @@ function ensureRecordArray(raw: unknown): Record<string, unknown>[] {
     data?: unknown;
     result?: unknown;
   };
-  const wrappedKeys: Array<keyof typeof candidate> = [
+  const wrappedKeys: Array<string> = [
     "records",
     "data",
     "result",
+    "New resource",
+    "Updated resource",
+    "Result",
   ];
 
   for (const key of wrappedKeys) {

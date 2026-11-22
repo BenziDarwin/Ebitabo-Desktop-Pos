@@ -15,7 +15,7 @@
     "electron:dev": "concurrently --kill-others-on-fail \"npm run dev:web\" \"wait-on tcp:3000 && npm run dev:electron\"",
     "export": "next export",
     "dist": "npm run build:desktop",
-    "dist:win": "npm run build:web && electron-builder --win && node electron/post-build-icon.js",
+    "dist:win": "npm run build:web && electron-builder --win --dir && node electron/post-build-icon.js && electron-builder --win --prepackaged dist/win-unpacked",
     "dist:linux": "npm run build:web && electron-builder --linux",
     "start": "next start",
     "lint": "eslint",
