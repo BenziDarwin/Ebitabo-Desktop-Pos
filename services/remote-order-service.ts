@@ -16,7 +16,7 @@ export interface EbPosOrderPayload {
   fields: string[];
   values: {
     order_ref: string;
-    order_type: "product" | "service";
+    order_type: "sale" | "service";
     order_date: string;
     served_by: string;
     state: "completed" | "cancelled";
@@ -51,7 +51,7 @@ export async function sendOrderStatus(
   },
 ): Promise<Record<string, unknown>[]> {
   const hasService = order.items.some((i) => Boolean(i.serviceId));
-  const orderType: "service" | "product" = hasService ? "service" : "product";
+  const orderType: "service" | "sale" = hasService ? "service" : "sale";
   const orderRef = order.reference || order.id;
   const servedBy =
     options?.servedBy?.trim() || order.servedBy?.trim() || "Staff";
