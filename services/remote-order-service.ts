@@ -22,7 +22,7 @@ export interface EbPosOrderPayload {
     order_type: "sale" | "service";
     order_date: string;
     served_by: string;
-    state: "completed" | "cancelled";
+    state: "created" | "completed" | "cancelled";
     subtotal: number;
     tax_amount: number;
     total_amount: number;
@@ -45,7 +45,7 @@ export function formatOdooDate(dateInput?: string | Date): string {
 
 export async function sendOrderStatus(
   order: OrderDraft,
-  state: "completed" | "cancelled",
+  state: "created" | "completed" | "cancelled",
   options?: {
     servedBy?: string;
     userId?: number;

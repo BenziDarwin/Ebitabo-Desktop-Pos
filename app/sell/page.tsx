@@ -440,7 +440,10 @@ export default function SellPage() {
             userId: Number(userId) || 1,
           });
         } catch (orderSyncError) {
-          console.warn("eb_pos.order completed sync error:", orderSyncError);
+          console.error("eb_pos.order completed sync error:", orderSyncError);
+          toast.warning(
+            "Sale recorded locally, but failed to sync order to main system.",
+          );
         }
       }
 
@@ -511,7 +514,7 @@ export default function SellPage() {
     setQuickModeReceiptOrder(null);
   };
 
-  const handleSaveDraft = () => {
+  const handleSaveDraft = async () => {
     if (cart.length === 0) {
       toast.error("Cart is empty");
       return;
@@ -541,6 +544,20 @@ export default function SellPage() {
     };
 
     saveOrderDraft(draft);
+
+    const isOffline =
+      typeof navigator !== "undefined" && navigator.onLine === false;
+    if (!isOffline) {
+      try {
+        await sendOrderStatus(draft, "created", {
+          servedBy: draft.servedBy,
+          userId: Number(draft.userId) || 1,
+        });
+      } catch (orderSyncError) {
+        console.warn("eb_pos.order draft sync error:", orderSyncError);
+      }
+    }
+
     toast.success(activeDraft ? "Draft updated" : "Draft saved");
     clearCart();
     setServedBy("");

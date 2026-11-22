@@ -156,6 +156,13 @@ async function pathExists(filePath) {
 async function serveStatic(req, res, staticDir) {
   const requestUrl = new URL(req.url || "/", "http://127.0.0.1");
   let pathname = decodeURIComponent(requestUrl.pathname || "/");
+
+  // Normalize relative Next.js static asset requests from nested routes
+  const nextIdx = pathname.indexOf("/_next/");
+  if (nextIdx > 0) {
+    pathname = pathname.substring(nextIdx);
+  }
+
   if (pathname === "/") {
     pathname = "/index.html";
   } else if (pathname.endsWith("/")) {
@@ -168,8 +175,27 @@ async function serveStatic(req, res, staticDir) {
     return;
   }
 
-  if (!(await pathExists(filePath))) {
-    if (!path.extname(pathname)) {
+  let stat = null;
+  try {
+    stat = await fs.promises.stat(filePath);
+  } catch {
+    stat = null;
+  }
+
+  if (stat && stat.isDirectory()) {
+    const htmlWithSameName = `${filePath}.html`;
+    const htmlWithIndex = path.join(filePath, "index.html");
+    if (await pathExists(htmlWithSameName)) {
+      filePath = htmlWithSameName;
+    } else if (await pathExists(htmlWithIndex)) {
+      filePath = htmlWithIndex;
+    } else {
+      filePath = path.join(staticDir, "index.html");
+    }
+  } else if (!stat) {
+    if (!path.extname(pathname) && (await pathExists(`${filePath}.html`))) {
+      filePath = `${filePath}.html`;
+    } else if (!path.extname(pathname)) {
       filePath = path.join(staticDir, "index.html");
     } else {
       writeJson(res, 404, { error: "Not found" });
