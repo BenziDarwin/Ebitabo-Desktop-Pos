@@ -48,11 +48,7 @@ function ensureRecordArray(raw: unknown): Record<string, unknown>[] {
     return normalizeRecordCollection(raw);
   }
 
-  const candidate = raw as {
-    records?: unknown;
-    data?: unknown;
-    result?: unknown;
-  };
+  const candidate = raw as Record<string, unknown>;
   const wrappedKeys: Array<string> = [
     "records",
     "data",
