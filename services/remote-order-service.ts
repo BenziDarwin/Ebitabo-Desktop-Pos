@@ -8,7 +8,8 @@ import {
 
 export interface EbPosOrderLine {
   item_type: "Product" | "Service";
-  product_id: number;
+  product_id?: number;
+  service_id?: number;
   item_name: string;
   number_sold: number;
   unit_cost: number;
@@ -65,14 +66,25 @@ export async function sendOrderStatus(
 
   const line_ids: EbPosOrderLine[] = order.items.map((item) => {
     const isService = Boolean(item.serviceId);
-    const rawId = isService ? item.serviceId : item.productId;
-    const productId = Number(rawId) || 0;
     const unitCost = Number(item.price) || 0;
     const qty = Number(item.quantity) || 0;
     const lineTotal = Number(item.subtotal) || unitCost * qty;
 
+    if (isService) {
+      const serviceId = Number(item.serviceId) || 0;
+      return {
+        item_type: "Service",
+        service_id: serviceId,
+        item_name: item.name || `Service #${serviceId}`,
+        number_sold: qty,
+        unit_cost: unitCost,
+        total_amount: lineTotal,
+      };
+    }
+
+    const productId = Number(item.productId) || 0;
     return {
-      item_type: isService ? "Service" : "Product",
+      item_type: "Product",
       product_id: productId,
       item_name: item.name || `Item #${productId}`,
       number_sold: qty,
