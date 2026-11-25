@@ -5,6 +5,10 @@ import type { CartItem, Client, OrderDraft } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
 import { useCart } from "@/provider/cart-provider";
+import {
+  deductLocalProductStock,
+  restoreLocalProductStock,
+} from "@/services/cart-stock-service";
 
 interface POSContextType {
   cart: CartItem[];
@@ -25,7 +29,10 @@ interface POSContextType {
   activeDraftId: string | null;
   saveOrderDraft: (draft: OrderDraft) => void;
   loadOrderDraft: (draftId: string) => void;
-  deleteOrderDraft: (draftId: string) => void;
+  deleteOrderDraft: (
+    draftId: string,
+    options?: { restoreStock?: boolean },
+  ) => void;
   markOrderDraftCancelled: (draftId: string) => void;
   restoreOrderDraft: (draftId: string) => void;
   orderNotes: string;
@@ -122,8 +129,15 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         (existingDraft) => existingDraft.id === enrichedDraft.id,
       );
       if (draftIndex === -1) {
+        deductLocalProductStock(enrichedDraft.items);
         return [...previousDrafts, enrichedDraft];
       }
+
+      const existingDraft = previousDrafts[draftIndex];
+      if (existingDraft.state !== "cancelled") {
+        restoreLocalProductStock(existingDraft.items);
+      }
+      deductLocalProductStock(enrichedDraft.items);
 
       const nextDrafts = [...previousDrafts];
       nextDrafts[draftIndex] = enrichedDraft;
@@ -143,10 +157,18 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     setActiveDraftId(draft.id);
   };
 
-  const deleteOrderDraft = (draftId: string) => {
-    setOrderDrafts((previousDrafts) =>
-      previousDrafts.filter((draft) => draft.id !== draftId),
-    );
+  const deleteOrderDraft = (
+    draftId: string,
+    options?: { restoreStock?: boolean },
+  ) => {
+    const shouldRestoreStock = options?.restoreStock !== false;
+    setOrderDrafts((previousDrafts) => {
+      const draft = previousDrafts.find((d) => d.id === draftId);
+      if (shouldRestoreStock && draft && draft.state !== "cancelled") {
+        restoreLocalProductStock(draft.items);
+      }
+      return previousDrafts.filter((d) => d.id !== draftId);
+    });
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
     }
@@ -154,9 +176,15 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
 
   const markOrderDraftCancelled = (draftId: string) => {
     setOrderDrafts((previousDrafts) =>
-      previousDrafts.map((draft) =>
-        draft.id === draftId ? { ...draft, state: "cancelled" } : draft,
-      ),
+      previousDrafts.map((draft) => {
+        if (draft.id === draftId) {
+          if (draft.state !== "cancelled") {
+            restoreLocalProductStock(draft.items);
+          }
+          return { ...draft, state: "cancelled" };
+        }
+        return draft;
+      }),
     );
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
@@ -165,9 +193,15 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
 
   const restoreOrderDraft = (draftId: string) => {
     setOrderDrafts((previousDrafts) =>
-      previousDrafts.map((draft) =>
-        draft.id === draftId ? { ...draft, state: "created" } : draft,
-      ),
+      previousDrafts.map((draft) => {
+        if (draft.id === draftId) {
+          if (draft.state === "cancelled") {
+            deductLocalProductStock(draft.items);
+          }
+          return { ...draft, state: "created" };
+        }
+        return draft;
+      }),
     );
   };
 

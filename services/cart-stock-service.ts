@@ -4,7 +4,10 @@ import {
   toNonNegativeQuantity,
   toPositiveQuantity,
 } from "@/lib/quantity";
-import { readLocalProducts } from "@/services/repositories/local-catalog-storage";
+import {
+  readLocalProducts,
+  writeLocalProducts,
+} from "@/services/repositories/local-catalog-storage";
 
 export interface InsufficientStockIssue {
   itemName: string;
@@ -65,4 +68,56 @@ export function findFirstInsufficientStock(
 
 export function formatStockQuantity(value: number, locale?: string): string {
   return formatQuantity(value, locale);
+}
+
+export function deductLocalProductStock(
+  items: Array<{ productId?: string; quantity: number }>,
+): void {
+  const qtyByProductId = new Map<string, number>();
+  for (const item of items) {
+    if (!item.productId) continue;
+    const qty = Number(item.quantity) || 0;
+    if (qty <= 0) continue;
+    const id = String(item.productId);
+    qtyByProductId.set(id, (qtyByProductId.get(id) || 0) + qty);
+  }
+
+  if (qtyByProductId.size === 0) return;
+
+  const products = readLocalProducts();
+  const updated = products.map((product) => {
+    const toDeduct = qtyByProductId.get(String(product.id));
+    if (!toDeduct) return product;
+    return {
+      ...product,
+      stock: Math.max(0, Number(product.stock || 0) - toDeduct),
+    };
+  });
+  writeLocalProducts(updated);
+}
+
+export function restoreLocalProductStock(
+  items: Array<{ productId?: string; quantity: number }>,
+): void {
+  const qtyByProductId = new Map<string, number>();
+  for (const item of items) {
+    if (!item.productId) continue;
+    const qty = Number(item.quantity) || 0;
+    if (qty <= 0) continue;
+    const id = String(item.productId);
+    qtyByProductId.set(id, (qtyByProductId.get(id) || 0) + qty);
+  }
+
+  if (qtyByProductId.size === 0) return;
+
+  const products = readLocalProducts();
+  const updated = products.map((product) => {
+    const toRestore = qtyByProductId.get(String(product.id));
+    if (!toRestore) return product;
+    return {
+      ...product,
+      stock: Math.max(0, Number(product.stock || 0) + toRestore),
+    };
+  });
+  writeLocalProducts(updated);
 }

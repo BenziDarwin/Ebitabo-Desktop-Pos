@@ -166,7 +166,7 @@ export default function OrdersPage() {
 
     try {
       setIsRestoring(true);
-      await sendOrderStatus(draft, "completed", {
+      await sendOrderStatus(draft, "created", {
         servedBy: draft.servedBy || user?.name || user?.username || "Staff",
         userId: Number(user?.id || business?.userId || 1),
       });

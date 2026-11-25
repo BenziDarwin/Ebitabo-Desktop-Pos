@@ -9,6 +9,7 @@ export interface CompleteOrderOptions {
   payments?: Payment[];
   change?: number;
   sync?: Partial<SaleSyncMetadata>;
+  skipStockDeduction?: boolean;
 }
 
 export interface OrderRepository {

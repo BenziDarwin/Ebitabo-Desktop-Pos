@@ -413,6 +413,7 @@ export default function SellPage() {
               date: new Date().toISOString(),
             },
           ],
+          skipStockDeduction: Boolean(activeDraftId),
           sync: {
             status: remoteCreateFailed ? "pending" : "synced",
             remoteSaleId,
@@ -462,7 +463,7 @@ export default function SellPage() {
       }
 
       if (activeDraftId) {
-        deleteOrderDraft(activeDraftId);
+        deleteOrderDraft(activeDraftId, { restoreStock: false });
       }
 
       setShowPaymentDialog(false);

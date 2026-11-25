@@ -98,19 +98,21 @@ export class LocalOrderRepository implements OrderRepository {
     records.push(completedOrder);
     writeLocalSalesRecords(records);
 
-    const soldByProductId = buildSoldQuantities(order);
-    if (soldByProductId.size > 0) {
-      const products = readLocalProducts();
-      const updatedProducts = products.map((product) => {
-        const soldQty = soldByProductId.get(product.id);
-        if (!soldQty) return product;
+    if (!options?.skipStockDeduction) {
+      const soldByProductId = buildSoldQuantities(order);
+      if (soldByProductId.size > 0) {
+        const products = readLocalProducts();
+        const updatedProducts = products.map((product) => {
+          const soldQty = soldByProductId.get(product.id);
+          if (!soldQty) return product;
 
-        return {
-          ...product,
-          stock: Math.max(0, product.stock - soldQty),
-        };
-      });
-      writeLocalProducts(updatedProducts);
+          return {
+            ...product,
+            stock: Math.max(0, product.stock - soldQty),
+          };
+        });
+        writeLocalProducts(updatedProducts);
+      }
     }
 
     return completedOrder;
