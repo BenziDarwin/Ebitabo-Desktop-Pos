@@ -220,18 +220,9 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (index >= 0) {
-          const prev = nextDrafts[index];
-          if (prev.state !== sOrder.state && sOrder.state) {
-            if (sOrder.state === "cancelled" && prev.state !== "cancelled") {
-              restoreLocalProductStock(prev.items);
-            } else if (
-              sOrder.state === "created" &&
-              prev.state === "cancelled"
-            ) {
-              deductLocalProductStock(sOrder.items);
-            }
+          if (nextDrafts[index].state !== sOrder.state && sOrder.state) {
             nextDrafts[index] = {
-              ...prev,
+              ...nextDrafts[index],
               state: sOrder.state,
             };
           }
