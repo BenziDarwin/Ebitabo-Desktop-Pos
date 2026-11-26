@@ -60,7 +60,13 @@ function ensureRecordArray(raw: unknown): Record<string, unknown>[] {
 
   for (const key of wrappedKeys) {
     if (!(key in candidate)) continue;
-    return normalizeRecordCollection(candidate[key]);
+    const value = candidate[key];
+    if (Array.isArray(value) || isRecord(value)) {
+      return normalizeRecordCollection(value);
+    }
+    // If it's a primitive or boolean (e.g. { "Result": true } or { "Result": 55 }),
+    // preserve the candidate wrapper so success is not discarded as an empty array.
+    return [candidate];
   }
 
   return normalizeRecordCollection(raw);

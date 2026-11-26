@@ -35,6 +35,7 @@ interface POSContextType {
   ) => void;
   markOrderDraftCancelled: (draftId: string) => void;
   restoreOrderDraft: (draftId: string) => void;
+  mergeServerOrders: (serverOrders: OrderDraft[]) => void;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
 }
@@ -205,6 +206,34 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const mergeServerOrders = (serverOrders: OrderDraft[]) => {
+    if (!serverOrders || serverOrders.length === 0) return;
+
+    setOrderDrafts((previousDrafts) => {
+      const nextDrafts = [...previousDrafts];
+      for (const sOrder of serverOrders) {
+        const index = nextDrafts.findIndex(
+          (d) =>
+            d.reference === sOrder.reference ||
+            d.id === sOrder.id ||
+            d.id === sOrder.reference,
+        );
+
+        if (index >= 0) {
+          if (nextDrafts[index].state !== sOrder.state && sOrder.state) {
+            nextDrafts[index] = {
+              ...nextDrafts[index],
+              state: sOrder.state,
+            };
+          }
+        } else {
+          nextDrafts.push(sOrder);
+        }
+      }
+      return nextDrafts;
+    });
+  };
+
   const clearCart = () => {
     setActiveDraftId(null);
     clearCartState();
@@ -234,6 +263,7 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         deleteOrderDraft,
         markOrderDraftCancelled,
         restoreOrderDraft,
+        mergeServerOrders,
         orderNotes,
         setOrderNotes,
       }}

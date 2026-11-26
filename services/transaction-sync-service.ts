@@ -1,4 +1,8 @@
-import type { BusinessDetails, CompletedOrder } from "@/core/entities";
+import type {
+  BusinessDetails,
+  CompletedOrder,
+  OrderDraft,
+} from "@/core/entities";
 import {
   readLocalSalesRecords,
   writeLocalSalesRecords,
@@ -7,6 +11,7 @@ import {
   createSaleFromCart,
   extractRemoteSaleId,
 } from "@/services/sales-service";
+import { sendOrderStatus } from "@/services/remote-order-service";
 
 export interface SyncPendingTransactionsResult {
   attempted: number;
@@ -167,6 +172,35 @@ export async function syncPendingTransactions(
         nextRecords[index] = markSynced(order, remoteSaleId);
         result.synced += 1;
         hasChanges = true;
+
+        try {
+          const draft: OrderDraft = {
+            id: order.id,
+            reference: order.reference,
+            items: order.items,
+            subtotal: order.subtotal,
+            tax: order.tax,
+            total: order.total,
+            discount: order.discount,
+            discountType: order.discountType,
+            state: "completed",
+            servedBy: order.servedBy ?? order.sync.servedBy,
+            userId: business.userId,
+            createdAt: order.completedAt,
+            updatedAt: order.completedAt,
+          };
+          await sendOrderStatus(draft, "completed", {
+            servedBy: draft.servedBy,
+            userId: Number(business.userId) || 1,
+            subtotal: draft.subtotal,
+            total: draft.total,
+          });
+        } catch (orderSyncError) {
+          console.warn(
+            "sendOrderStatus during pending sync error:",
+            orderSyncError,
+          );
+        }
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "Sync failed unexpectedly.";

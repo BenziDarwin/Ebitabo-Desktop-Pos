@@ -151,8 +151,10 @@ function mapCreateUid(userId: string): number {
   return toPositiveNumber(userId);
 }
 
-function mapClientId(client: Client): number {
-  return toPositiveNumber(client.id);
+function mapClientId(client?: Client | null): number {
+  if (!client) return 0;
+  const num = Number(client.id);
+  return Number.isFinite(num) && num >= 0 ? num : 0;
 }
 
 function mapBusinessClientRecord(
@@ -379,9 +381,6 @@ export async function createSaleFromCart(
 
   const currencyId = toPositiveNumber(input.currencyId);
   const clientId = mapClientId(input.client);
-  if (!clientId) {
-    throw new Error("Selected client is invalid.");
-  }
 
   const paymentLines: PaymentLine[] = [
     {

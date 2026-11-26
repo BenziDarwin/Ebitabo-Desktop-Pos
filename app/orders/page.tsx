@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
 import { POSLayout } from "@/components/pos-layout";
@@ -13,7 +13,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { OrderDetailsDialog } from "@/components/order-details-dialog";
-import { Trash2, Eye, Plus, FileText, RotateCcw } from "lucide-react";
+import {
+  Trash2,
+  Eye,
+  Plus,
+  FileText,
+  RotateCcw,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { formatCurrency } from "@/lib/format-currency";
@@ -23,7 +30,10 @@ import {
   formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
-import { sendOrderStatus } from "@/services/remote-order-service";
+import {
+  fetchServerOrders,
+  sendOrderStatus,
+} from "@/services/remote-order-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
 
 export default function OrdersPage() {
@@ -34,6 +44,7 @@ export default function OrdersPage() {
     loadOrderDraft,
     markOrderDraftCancelled,
     restoreOrderDraft,
+    mergeServerOrders,
     clearCart,
     saveOrderDraft,
   } = usePOS();
@@ -46,6 +57,44 @@ export default function OrdersPage() {
   const [showDetails, setShowDetails] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isSyncingServer, setIsSyncingServer] = useState(false);
+
+  const syncOrders = useCallback(
+    async (showToast = false) => {
+      const userIdNum = Number(user?.id || business?.userId);
+      if (!userIdNum) return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        if (showToast)
+          toast.error("You are offline. Cannot sync server orders.");
+        return;
+      }
+
+      setIsSyncingServer(true);
+      try {
+        const fetched = await fetchServerOrders(userIdNum);
+        if (fetched.length > 0) {
+          mergeServerOrders(fetched);
+          if (showToast) {
+            toast.success(`Synced ${fetched.length} orders from server.`);
+          }
+        } else if (showToast) {
+          toast.info("No server orders found for current user.");
+        }
+      } catch (err) {
+        console.warn("Failed to sync server orders:", err);
+        if (showToast) {
+          toast.error("Failed to sync orders from server.");
+        }
+      } finally {
+        setIsSyncingServer(false);
+      }
+    },
+    [user?.id, business?.userId, mergeServerOrders],
+  );
+
+  useEffect(() => {
+    void syncOrders(false);
+  }, [syncOrders]);
 
   const activeDrafts = orderDrafts.filter(
     (draft) => draft.state !== "cancelled",
@@ -197,13 +246,26 @@ export default function OrdersPage() {
               Manage active and deleted orders with server synchronization
             </p>
           </div>
-          <Button
-            onClick={handleNewOrder}
-            className="bg-blue-600 hover:bg-blue-700"
-          >
-            <Plus className="w-4 h-4 mr-2" />
-            New Order
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => void syncOrders(true)}
+              disabled={isSyncingServer}
+              className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            >
+              <RefreshCw
+                className={`w-4 h-4 mr-2 ${isSyncingServer ? "animate-spin" : ""}`}
+              />
+              {isSyncingServer ? "Syncing..." : "Sync Orders"}
+            </Button>
+            <Button
+              onClick={handleNewOrder}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              New Order
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}

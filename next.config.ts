@@ -77,6 +77,28 @@ function getHeaderBasedApiRewrites() {
       ],
       destination: "http://:target/:path*",
     },
+    {
+      source: "/api/:path*",
+      has: [
+        {
+          type: "query" as const,
+          key: "target",
+          value: "https://(?<target>[^\\s&]+)",
+        },
+      ],
+      destination: "https://:target/:path*",
+    },
+    {
+      source: "/api/:path*",
+      has: [
+        {
+          type: "query" as const,
+          key: "target",
+          value: "http://(?<target>[^\\s&]+)",
+        },
+      ],
+      destination: "http://:target/:path*",
+    },
   ];
 }
 

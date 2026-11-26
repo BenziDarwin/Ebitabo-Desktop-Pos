@@ -122,10 +122,10 @@ function sanitizeForwardHeaders(rawHeaders, upstreamHost, originalHost) {
 
   // Client target hint is consumed by the bridge and should not be forwarded upstream.
   delete headers["x-ebitabo-client-url"];
+  delete headers["x-forwarded-host"];
+  delete headers["x-forwarded-proto"];
 
   headers.host = upstreamHost;
-  headers["x-forwarded-host"] = originalHost || "";
-  headers["x-forwarded-proto"] = "http";
 
   return headers;
 }

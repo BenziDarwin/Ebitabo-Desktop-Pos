@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderDraft } from "@/core/entities";
-import { sendOrderStatus } from "@/services/remote-order-service";
+import {
+  fetchServerOrders,
+  sendOrderStatus,
+} from "@/services/remote-order-service";
 import { sendRequestModel } from "@/services/repositories/send-request";
 import { Storage } from "@/lib/storage";
 import { STORAGE_KEYS } from "@/lib/constants";
@@ -92,5 +95,68 @@ describe("remote-order-service: sendOrderStatus", () => {
     expect(line.number_sold).toBe(3);
     expect(line.unit_cost).toBe(24000);
     expect(line.total_amount).toBe(72000);
+  });
+
+  it("succeeds when server returns boolean Result true on write/cancellation", async () => {
+    vi.mocked(sendRequestModel).mockResolvedValueOnce([{ Result: true }]);
+
+    const order: OrderDraft = {
+      id: "draft-3",
+      reference: "OrderRCTm-9999",
+      items: [
+        {
+          productId: "12",
+          name: "Item",
+          quantity: 1,
+          price: 5000,
+          subtotal: 5000,
+        },
+      ],
+      subtotal: 5000,
+      total: 5000,
+      createdAt: new Date("2026-11-24T10:00:00Z"),
+      updatedAt: new Date("2026-11-24T10:00:00Z"),
+      servedBy: "Jane Doe",
+      userId: "1",
+    };
+
+    const res = await sendOrderStatus(order, "cancelled");
+    expect(res).toEqual([{ Result: true }]);
+  });
+
+  it("fetchServerOrders retrieves and joins orders with their lines", async () => {
+    vi.mocked(sendRequestModel)
+      .mockResolvedValueOnce([
+        {
+          id: 55,
+          order_ref: "OrderRCTm-5555",
+          order_type: "sale",
+          order_date: "2026-11-24 10:00:00",
+          served_by: "Jane Doe",
+          subtotal: 24000,
+          total_amount: 24000,
+          state: "created",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 101,
+          order_id: [55, "OrderRCTm-5555"],
+          product_id: [12, "Product A"],
+          item_type: "Product",
+          item_name: "Product A",
+          number_sold: 2,
+          unit_cost: 12000,
+          total_amount: 24000,
+        },
+      ]);
+
+    const orders = await fetchServerOrders(1);
+    expect(orders).toHaveLength(1);
+    expect(orders[0].reference).toBe("OrderRCTm-5555");
+    expect(orders[0].items).toHaveLength(1);
+    expect(orders[0].items[0].name).toBe("Product A");
+    expect(orders[0].items[0].quantity).toBe(2);
+    expect(orders[0].items[0].productId).toBe("12");
   });
 });
