@@ -97,7 +97,7 @@ export default function OrdersPage() {
   }, [syncOrders]);
 
   const activeDrafts = orderDrafts.filter(
-    (draft) => draft.state !== "cancelled",
+    (draft) => draft.state !== "cancelled" && draft.state !== "completed",
   );
   const deletedDrafts = orderDrafts.filter(
     (draft) => draft.state === "cancelled",

@@ -226,7 +226,7 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
               state: sOrder.state,
             };
           }
-        } else {
+        } else if (sOrder.state !== "completed") {
           nextDrafts.push(sOrder);
         }
       }
