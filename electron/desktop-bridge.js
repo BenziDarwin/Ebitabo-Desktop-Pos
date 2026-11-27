@@ -257,42 +257,66 @@ function proxyToBackend(req, res, apiProxyTarget) {
     req.headers.host,
   );
 
-  const upstreamReq = transport.request(
-    {
-      protocol: upstreamUrl.protocol,
-      hostname: upstreamUrl.hostname,
-      port: upstreamUrl.port || undefined,
-      path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
-      method: req.method,
-      headers,
-    },
-    (upstreamRes) => {
-      const responseHeaders = { ...upstreamRes.headers };
-      res.writeHead(upstreamRes.statusCode || 502, responseHeaders);
-      upstreamRes.pipe(res);
-    },
-  );
-
-  upstreamReq.on("error", (error) => {
-    console.error("Desktop bridge upstream request failed", {
-      message: error.message,
-      code: error.code,
-      target: resolvedTarget,
-      path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
-    });
-    const wroteError = tryWriteJson(res, 502, {
-      error: "Failed to reach API upstream",
-      details: error.message,
-      code: error.code || null,
-      target: resolvedTarget,
-    });
-
-    if (!wroteError && !res.destroyed && !res.writableEnded) {
-      res.destroy();
-    }
+  const chunks = [];
+  req.on("data", (chunk) => {
+    chunks.push(chunk);
   });
+  req.on("error", (error) => {
+    console.error("Desktop bridge incoming request error", {
+      message: error.message,
+      target: resolvedTarget,
+    });
+    tryWriteJson(res, 400, { error: "Invalid incoming request stream" });
+  });
+  req.on("end", () => {
+    const bodyBuffer = Buffer.concat(chunks);
+    if (
+      bodyBuffer.length > 0 ||
+      (req.method !== "GET" && req.method !== "HEAD")
+    ) {
+      headers["content-length"] = String(bodyBuffer.length);
+    }
 
-  req.pipe(upstreamReq);
+    const upstreamReq = transport.request(
+      {
+        protocol: upstreamUrl.protocol,
+        hostname: upstreamUrl.hostname,
+        port: upstreamUrl.port || undefined,
+        path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
+        method: req.method,
+        headers,
+      },
+      (upstreamRes) => {
+        const responseHeaders = { ...upstreamRes.headers };
+        res.writeHead(upstreamRes.statusCode || 502, responseHeaders);
+        upstreamRes.pipe(res);
+      },
+    );
+
+    upstreamReq.on("error", (error) => {
+      console.error("Desktop bridge upstream request failed", {
+        message: error.message,
+        code: error.code,
+        target: resolvedTarget,
+        path: `${upstreamUrl.pathname}${upstreamUrl.search}`,
+      });
+      const wroteError = tryWriteJson(res, 502, {
+        error: "Failed to reach API upstream",
+        details: error.message,
+        code: error.code || null,
+        target: resolvedTarget,
+      });
+
+      if (!wroteError && !res.destroyed && !res.writableEnded) {
+        res.destroy();
+      }
+    });
+
+    if (bodyBuffer.length > 0) {
+      upstreamReq.write(bodyBuffer);
+    }
+    upstreamReq.end();
+  });
 }
 
 function startDesktopBridge({
@@ -376,4 +400,5 @@ function startDesktopBridge({
 
 module.exports = {
   startDesktopBridge,
+  proxyToBackend,
 };

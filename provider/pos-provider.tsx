@@ -253,7 +253,7 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
               state: sOrder.state,
             };
           }
-        } else if (sOrder.state !== "completed") {
+        } else if (sOrder.state === "created") {
           nextDrafts.push(sOrder);
         }
       }

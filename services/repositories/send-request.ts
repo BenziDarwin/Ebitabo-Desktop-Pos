@@ -145,9 +145,12 @@ export async function sendRequestModel(
   if (!response.ok || !trimmed || /^<!doctype html>|^<html/i.test(trimmed)) {
     console.warn(`${LOG_PREFIX} sendRequest rejected response`, {
       model,
+      endpointUrl,
       status: response.status,
       isHtml: /^<!doctype html>|^<html/i.test(trimmed),
       hasBody: Boolean(trimmed),
+      snippet: trimmed.slice(0, 250),
+      payloadSent: payload,
     });
     return [];
   }

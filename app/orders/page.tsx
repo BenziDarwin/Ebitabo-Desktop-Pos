@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePOS } from "@/provider/pos-provider";
 import { useAuth } from "@/provider/auth-provider";
 import { POSLayout } from "@/components/pos-layout";
@@ -45,6 +45,7 @@ export default function OrdersPage() {
     loadOrderDraft,
     markOrderDraftCancelled,
     restoreOrderDraft,
+    deleteOrderDraft,
     mergeServerOrders,
     clearCart,
     saveOrderDraft,
@@ -59,6 +60,8 @@ export default function OrdersPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isSyncingServer, setIsSyncingServer] = useState(false);
+  const orderDraftsRef = useRef(orderDrafts);
+  orderDraftsRef.current = orderDrafts;
 
   const syncOrders = useCallback(
     async (showToast = false) => {
@@ -79,7 +82,7 @@ export default function OrdersPage() {
 
         // Push any local active drafts not yet present on the server
         let pushedCount = 0;
-        for (const localDraft of orderDrafts) {
+        for (const localDraft of orderDraftsRef.current) {
           if (
             localDraft.state === "created" &&
             localDraft.reference &&
@@ -126,14 +129,7 @@ export default function OrdersPage() {
         setIsSyncingServer(false);
       }
     },
-    [
-      user?.id,
-      user?.name,
-      user?.username,
-      business?.userId,
-      orderDrafts,
-      mergeServerOrders,
-    ],
+    [user?.id, user?.name, user?.username, business?.userId, mergeServerOrders],
   );
 
   useEffect(() => {
@@ -230,20 +226,27 @@ export default function OrdersPage() {
 
     try {
       setIsDeleting(true);
-      await sendOrderStatus(target, "cancelled", {
-        servedBy: target.servedBy || user?.name || user?.username || "Staff",
-        userId: resolveNumericUserId(user?.id, business?.userId) || 1,
-      });
+      let serverSynced = true;
+      try {
+        await sendOrderStatus(target, "cancelled", {
+          servedBy: target.servedBy || user?.name || user?.username || "Staff",
+          userId: resolveNumericUserId(user?.id, business?.userId) || 1,
+        });
+      } catch (syncError: unknown) {
+        serverSynced = false;
+        console.warn("eb_pos.order cancel sync error:", syncError);
+      }
 
       markOrderDraftCancelled(draftId);
       setShowDeleteConfirm(null);
       setShowDetails(false);
-      toast.success("Order cancelled on server and moved to Deleted tab");
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Server error";
-      toast.error(
-        `Cancellation failed: ${msg}. The order has not been deleted.`,
-      );
+      if (serverSynced) {
+        toast.success("Order cancelled on server and moved to Deleted tab");
+      } else {
+        toast.warning(
+          "Order moved to Deleted tab locally, but server sync failed.",
+        );
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -259,16 +262,23 @@ export default function OrdersPage() {
 
     try {
       setIsRestoring(true);
-      await sendOrderStatus(draft, "created", {
-        servedBy: draft.servedBy || user?.name || user?.username || "Staff",
-        userId: resolveNumericUserId(user?.id, business?.userId) || 1,
-      });
+      let serverSynced = true;
+      try {
+        await sendOrderStatus(draft, "created", {
+          servedBy: draft.servedBy || user?.name || user?.username || "Staff",
+          userId: resolveNumericUserId(user?.id, business?.userId) || 1,
+        });
+      } catch (syncError: unknown) {
+        serverSynced = false;
+        console.warn("eb_pos.order restore sync error:", syncError);
+      }
 
       restoreOrderDraft(draft.id);
-      toast.success("Order restored back to Saved orders");
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Server error";
-      toast.error(`Restore failed: ${msg}`);
+      if (serverSynced) {
+        toast.success("Order restored back to Saved orders");
+      } else {
+        toast.warning("Order restored locally, but server sync failed.");
+      }
     } finally {
       setIsRestoring(false);
     }
@@ -334,6 +344,24 @@ export default function OrdersPage() {
           >
             Deleted Orders ({deletedDrafts.length})
           </button>
+          {currentTab === "deleted" && deletedDrafts.length > 0 && (
+            <div className="ml-auto pb-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  for (const d of deletedDrafts) {
+                    deleteOrderDraft(d.id, { restoreStock: false });
+                  }
+                  toast.success("Cleared deleted orders");
+                }}
+                className="text-red-600 border-red-200 hover:bg-red-50"
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Clear Deleted
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Orders Grid */}

@@ -102,20 +102,15 @@ function getHeaderBasedApiRewrites() {
   ];
 }
 
-if (!isProduction && apiProxyTarget) {
+const devApiProxyPort = Number(process.env.EBITABO_DEV_PROXY_PORT || 3001);
+
+if (!isProduction) {
   nextConfig.rewrites = async () => [
-    ...getHeaderBasedApiRewrites(),
-    {
-      source: "/api/ebtabo_api",
-      destination: `${apiProxyTarget}/ebtabo_api/`,
-    },
     {
       source: "/api/:path*",
-      destination: `${apiProxyTarget}/:path*`,
+      destination: `http://127.0.0.1:${devApiProxyPort}/api/:path*`,
     },
   ];
-} else if (!isProduction) {
-  nextConfig.rewrites = async () => getHeaderBasedApiRewrites();
 }
 
 export default nextConfig;
