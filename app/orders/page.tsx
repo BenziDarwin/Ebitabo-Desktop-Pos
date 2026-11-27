@@ -32,6 +32,7 @@ import {
 } from "@/services/cart-stock-service";
 import {
   fetchServerOrders,
+  resolveNumericUserId,
   sendOrderStatus,
 } from "@/services/remote-order-service";
 import type { OrderDraft, CartItem } from "@/lib/types";
@@ -61,7 +62,7 @@ export default function OrdersPage() {
 
   const syncOrders = useCallback(
     async (showToast = false) => {
-      const userIdNum = Number(user?.id || business?.userId);
+      const userIdNum = resolveNumericUserId(user?.id, business?.userId);
       if (!userIdNum) return;
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         if (showToast)
@@ -72,13 +73,49 @@ export default function OrdersPage() {
       setIsSyncingServer(true);
       try {
         const fetched = await fetchServerOrders(userIdNum);
+        const serverRefs = new Set(
+          fetched.map((o) => o.reference).filter(Boolean),
+        );
+
+        // Push any local active drafts not yet present on the server
+        let pushedCount = 0;
+        for (const localDraft of orderDrafts) {
+          if (
+            localDraft.state === "created" &&
+            localDraft.reference &&
+            !serverRefs.has(localDraft.reference)
+          ) {
+            try {
+              await sendOrderStatus(localDraft, "created", {
+                servedBy:
+                  localDraft.servedBy ||
+                  user?.name ||
+                  user?.username ||
+                  "Staff",
+                userId: userIdNum,
+              });
+              pushedCount += 1;
+            } catch (pushErr) {
+              console.warn(
+                `Failed to push local order ${localDraft.reference}:`,
+                pushErr,
+              );
+            }
+          }
+        }
+
         if (fetched.length > 0) {
           mergeServerOrders(fetched);
-          if (showToast) {
-            toast.success(`Synced ${fetched.length} orders from server.`);
+        }
+
+        if (showToast) {
+          if (fetched.length > 0 || pushedCount > 0) {
+            toast.success(
+              `Synced ${fetched.length} server orders${pushedCount > 0 ? ` and pushed ${pushedCount} local orders` : ""}.`,
+            );
+          } else {
+            toast.info("No server orders found for current user.");
           }
-        } else if (showToast) {
-          toast.info("No server orders found for current user.");
         }
       } catch (err) {
         console.warn("Failed to sync server orders:", err);
@@ -89,7 +126,14 @@ export default function OrdersPage() {
         setIsSyncingServer(false);
       }
     },
-    [user?.id, business?.userId, mergeServerOrders],
+    [
+      user?.id,
+      user?.name,
+      user?.username,
+      business?.userId,
+      orderDrafts,
+      mergeServerOrders,
+    ],
   );
 
   useEffect(() => {
@@ -188,7 +232,7 @@ export default function OrdersPage() {
       setIsDeleting(true);
       await sendOrderStatus(target, "cancelled", {
         servedBy: target.servedBy || user?.name || user?.username || "Staff",
-        userId: Number(user?.id || business?.userId || 1),
+        userId: resolveNumericUserId(user?.id, business?.userId) || 1,
       });
 
       markOrderDraftCancelled(draftId);
@@ -217,7 +261,7 @@ export default function OrdersPage() {
       setIsRestoring(true);
       await sendOrderStatus(draft, "created", {
         servedBy: draft.servedBy || user?.name || user?.username || "Staff",
-        userId: Number(user?.id || business?.userId || 1),
+        userId: resolveNumericUserId(user?.id, business?.userId) || 1,
       });
 
       restoreOrderDraft(draft.id);

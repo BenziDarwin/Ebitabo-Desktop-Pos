@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { OrderDraft } from "@/core/entities";
 import {
   fetchServerOrders,
+  resolveNumericUserId,
   sendOrderStatus,
 } from "@/services/remote-order-service";
 import { sendRequestModel } from "@/services/repositories/send-request";
@@ -158,5 +159,45 @@ describe("remote-order-service: sendOrderStatus", () => {
     expect(orders[0].items[0].name).toBe("Product A");
     expect(orders[0].items[0].quantity).toBe(2);
     expect(orders[0].items[0].productId).toBe("12");
+  });
+
+  it("fetchServerOrders does not misclassify product lines with Odoo service_id: false", async () => {
+    vi.mocked(sendRequestModel)
+      .mockResolvedValueOnce([
+        {
+          id: 56,
+          order_ref: "OrderRCTm-5656",
+          order_type: "sale",
+          order_date: "2026-11-27 10:00:00",
+          served_by: "Cashier",
+          subtotal: 15000,
+          total_amount: 15000,
+          state: "created",
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 102,
+          order_id: [56, "OrderRCTm-5656"],
+          product_id: [24, "Product B"],
+          service_id: false,
+          item_type: "Product",
+          item_name: "Product B",
+          number_sold: 3,
+          unit_cost: 5000,
+          total_amount: 15000,
+        },
+      ]);
+
+    const orders = await fetchServerOrders(1);
+    expect(orders).toHaveLength(1);
+    expect(orders[0].items[0].productId).toBe("24");
+    expect(orders[0].items[0].serviceId).toBeUndefined();
+  });
+
+  it("resolveNumericUserId skips non-numeric userId and falls back to businessUserId", () => {
+    expect(resolveNumericUserId("admin", "42")).toBe(42);
+    expect(resolveNumericUserId("7", "42")).toBe(7);
+    expect(resolveNumericUserId("", "")).toBe(0);
   });
 });

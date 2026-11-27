@@ -33,6 +33,23 @@ export interface EbPosOrderPayload {
   };
 }
 
+export function resolveNumericUserId(
+  userId?: string | number | null,
+  businessUserId?: string | number | null,
+): number {
+  const candidates = [userId, businessUserId];
+  for (const candidate of candidates) {
+    if (candidate === null || candidate === undefined || candidate === "") {
+      continue;
+    }
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return 0;
+}
+
 export function formatOdooDate(dateInput?: string | Date): string {
   const d = dateInput ? new Date(dateInput) : new Date();
   const year = d.getFullYear();
@@ -240,7 +257,8 @@ export async function fetchServerOrders(
         if (!oId) continue;
 
         const isService =
-          line.item_type === "Service" || line.service_id != null;
+          line.item_type === "Service" ||
+          (Boolean(line.service_id) && line.item_type !== "Product");
         const rawProductId = Array.isArray(line.product_id)
           ? line.product_id[0]
           : line.product_id;

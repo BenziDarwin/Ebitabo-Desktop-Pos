@@ -128,6 +128,7 @@ export function ProductCatalog({
     updateCartItem,
     updateCartItemPrice,
     cart,
+    catalogVersion = 0,
   } = usePOS();
   const { currency, business } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
@@ -188,7 +189,7 @@ export function ProductCatalog({
     return () => {
       isMounted = false;
     };
-  }, [isSalesBusiness, refreshKey]);
+  }, [isSalesBusiness, refreshKey, catalogVersion]);
 
   useEffect(
     () => () => {

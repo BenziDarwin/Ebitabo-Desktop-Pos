@@ -13,7 +13,10 @@ import {
   getCachedBusinessClients,
   type SalePaymentMethod,
 } from "@/services/sales-service";
-import { sendOrderStatus } from "@/services/remote-order-service";
+import {
+  resolveNumericUserId,
+  sendOrderStatus,
+} from "@/services/remote-order-service";
 import { POSLayout } from "@/components/pos-layout";
 import { ProductCatalog } from "@/components/product-catalog";
 import { CartSummary } from "@/components/cart-summary";
@@ -466,6 +469,11 @@ export default function SellPage() {
         deleteOrderDraft(activeDraftId, { restoreStock: false });
       }
 
+      setCatalogRefreshKey((previous) => previous + 1);
+      if (!isOffline) {
+        void runCatalogSync("sale-completed");
+      }
+
       setShowPaymentDialog(false);
       setIsClientPickerOpen(false);
       clearCart();
@@ -524,6 +532,8 @@ export default function SellPage() {
       ? orderDrafts.find((draft) => draft.id === activeDraftId)
       : null;
 
+    const resolvedUserId =
+      resolveNumericUserId(user?.id, business?.userId) || 1;
     const draft: OrderDraft = {
       id: activeDraft?.id ?? `draft-${Date.now()}`,
       reference:
@@ -541,25 +551,36 @@ export default function SellPage() {
       servedBy: servedBy.trim() || activeDraft?.servedBy || undefined,
       createdAt: activeDraft?.createdAt ?? new Date(),
       updatedAt: new Date(),
-      userId: user?.id || business?.userId || "",
+      userId: String(resolvedUserId),
     };
 
     saveOrderDraft(draft);
+    setCatalogRefreshKey((previous) => previous + 1);
 
     const isOffline =
       typeof navigator !== "undefined" && navigator.onLine === false;
+    let syncFailed = false;
     if (!isOffline) {
       try {
         await sendOrderStatus(draft, "created", {
           servedBy: draft.servedBy,
-          userId: Number(draft.userId) || 1,
+          userId: resolvedUserId,
         });
       } catch (orderSyncError) {
+        syncFailed = true;
         console.warn("eb_pos.order draft sync error:", orderSyncError);
       }
     }
 
-    toast.success(activeDraft ? "Draft updated" : "Draft saved");
+    if (syncFailed) {
+      toast.warning(
+        activeDraft
+          ? "Draft updated locally, but failed to sync to server."
+          : "Draft saved locally, but failed to sync to server.",
+      );
+    } else {
+      toast.success(activeDraft ? "Draft updated" : "Draft saved");
+    }
     clearCart();
     setServedBy("");
   };

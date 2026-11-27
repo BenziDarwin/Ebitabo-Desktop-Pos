@@ -1,14 +1,26 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import type { CartItem, Client, OrderDraft } from "@/core/entities";
 import { STORAGE_KEYS } from "@/lib/constants";
 import { Storage } from "@/lib/storage";
+import { useAuth } from "@/provider/auth-provider";
 import { useCart } from "@/provider/cart-provider";
 import {
   deductLocalProductStock,
   restoreLocalProductStock,
 } from "@/services/cart-stock-service";
+import {
+  fetchServerOrders,
+  resolveNumericUserId,
+} from "@/services/remote-order-service";
 
 interface POSContextType {
   cart: CartItem[];
@@ -36,6 +48,8 @@ interface POSContextType {
   markOrderDraftCancelled: (draftId: string) => void;
   restoreOrderDraft: (draftId: string) => void;
   mergeServerOrders: (serverOrders: OrderDraft[]) => void;
+  catalogVersion: number;
+  bumpCatalogVersion: () => void;
   orderNotes: string;
   setOrderNotes: (notes: string) => void;
 }
@@ -74,6 +88,7 @@ function restoreDraftState() {
 }
 
 export function POSProvider({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, user, business } = useAuth();
   const [restoredDraftState] = useState(() => restoreDraftState());
   const [orderDrafts, setOrderDrafts] = useState<OrderDraft[]>(
     restoredDraftState.drafts,
@@ -81,6 +96,12 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
   const [activeDraftId, setActiveDraftId] = useState<string | null>(
     restoredDraftState.activeDraftId,
   );
+  const [catalogVersion, setCatalogVersion] = useState(0);
+  const hasSyncedServerOrdersRef = useRef(false);
+
+  const bumpCatalogVersion = useCallback(() => {
+    setCatalogVersion((prev) => prev + 1);
+  }, []);
   const {
     cart,
     replaceCart,
@@ -145,6 +166,7 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
       return nextDrafts;
     });
     setActiveDraftId(enrichedDraft.id);
+    bumpCatalogVersion();
   };
 
   const loadOrderDraft = (draftId: string) => {
@@ -173,6 +195,9 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
     }
+    if (shouldRestoreStock) {
+      bumpCatalogVersion();
+    }
   };
 
   const markOrderDraftCancelled = (draftId: string) => {
@@ -190,6 +215,7 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
     if (activeDraftId === draftId) {
       setActiveDraftId(null);
     }
+    bumpCatalogVersion();
   };
 
   const restoreOrderDraft = (draftId: string) => {
@@ -204,9 +230,10 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         return draft;
       }),
     );
+    bumpCatalogVersion();
   };
 
-  const mergeServerOrders = (serverOrders: OrderDraft[]) => {
+  const mergeServerOrders = useCallback((serverOrders: OrderDraft[]) => {
     if (!serverOrders || serverOrders.length === 0) return;
 
     setOrderDrafts((previousDrafts) => {
@@ -232,7 +259,26 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
       }
       return nextDrafts;
     });
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || hasSyncedServerOrdersRef.current) return;
+    if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+    const userIdNum = resolveNumericUserId(user?.id, business?.userId);
+    if (!userIdNum) return;
+
+    hasSyncedServerOrdersRef.current = true;
+    void fetchServerOrders(userIdNum)
+      .then((fetched) => {
+        if (fetched.length > 0) {
+          mergeServerOrders(fetched);
+        }
+      })
+      .catch((error) => {
+        console.warn("[POSProvider] Initial server order sync failed:", error);
+      });
+  }, [isAuthenticated, user?.id, business?.userId, mergeServerOrders]);
 
   const clearCart = () => {
     setActiveDraftId(null);
@@ -264,6 +310,8 @@ export function POSProvider({ children }: { children: React.ReactNode }) {
         markOrderDraftCancelled,
         restoreOrderDraft,
         mergeServerOrders,
+        catalogVersion,
+        bumpCatalogVersion,
         orderNotes,
         setOrderNotes,
       }}
