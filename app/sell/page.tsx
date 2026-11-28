@@ -13,6 +13,7 @@ import {
   getCachedBusinessClients,
   type SalePaymentMethod,
 } from "@/services/sales-service";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import {
   resolveNumericUserId,
   sendOrderStatus,
@@ -442,6 +443,9 @@ export default function SellPage() {
           await sendOrderStatus(checkoutDraft, "completed", {
             servedBy: resolvedServedBy,
             userId: Number(userId) || 1,
+            orderType: isSalesBusinessAccountType(resolvedBusiness.account_type)
+              ? "sale"
+              : "service",
           });
         } catch (orderSyncError) {
           console.error("eb_pos.order completed sync error:", orderSyncError);
@@ -565,6 +569,9 @@ export default function SellPage() {
         await sendOrderStatus(draft, "created", {
           servedBy: draft.servedBy,
           userId: resolvedUserId,
+          orderType: isSalesBusinessAccountType(business?.account_type)
+            ? "sale"
+            : "service",
         });
       } catch (orderSyncError) {
         syncFailed = true;

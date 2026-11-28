@@ -69,10 +69,12 @@ export async function sendOrderStatus(
     userId?: number;
     subtotal?: number;
     total?: number;
+    orderType?: "sale" | "service";
   },
 ): Promise<Record<string, unknown>[]> {
   const hasService = order.items.some((i) => Boolean(i.serviceId));
-  const orderType: "service" | "sale" = hasService ? "service" : "sale";
+  const orderType: "service" | "sale" =
+    options?.orderType ?? (hasService ? "service" : "sale");
   const orderRef = order.reference || order.id;
   const servedBy =
     options?.servedBy?.trim() || order.servedBy?.trim() || "Staff";

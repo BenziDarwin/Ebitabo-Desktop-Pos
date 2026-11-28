@@ -30,6 +30,7 @@ import {
   formatStockQuantity,
   getLocalProductStockMap,
 } from "@/services/cart-stock-service";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import {
   fetchServerOrders,
   resolveNumericUserId,
@@ -96,6 +97,11 @@ export default function OrdersPage() {
                   user?.username ||
                   "Staff",
                 userId: userIdNum,
+                orderType: business?.account_type
+                  ? isSalesBusinessAccountType(business.account_type)
+                    ? "sale"
+                    : "service"
+                  : undefined,
               });
               pushedCount += 1;
             } catch (pushErr) {
@@ -231,6 +237,11 @@ export default function OrdersPage() {
         await sendOrderStatus(target, "cancelled", {
           servedBy: target.servedBy || user?.name || user?.username || "Staff",
           userId: resolveNumericUserId(user?.id, business?.userId) || 1,
+          orderType: business?.account_type
+            ? isSalesBusinessAccountType(business.account_type)
+              ? "sale"
+              : "service"
+            : undefined,
         });
       } catch (syncError: unknown) {
         serverSynced = false;
@@ -267,6 +278,11 @@ export default function OrdersPage() {
         await sendOrderStatus(draft, "created", {
           servedBy: draft.servedBy || user?.name || user?.username || "Staff",
           userId: resolveNumericUserId(user?.id, business?.userId) || 1,
+          orderType: business?.account_type
+            ? isSalesBusinessAccountType(business.account_type)
+              ? "sale"
+              : "service"
+            : undefined,
         });
       } catch (syncError: unknown) {
         serverSynced = false;

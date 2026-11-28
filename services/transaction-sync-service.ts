@@ -11,6 +11,7 @@ import {
   createSaleFromCart,
   extractRemoteSaleId,
 } from "@/services/sales-service";
+import { isSalesBusinessAccountType } from "@/lib/business-account-type";
 import { sendOrderStatus } from "@/services/remote-order-service";
 
 export interface SyncPendingTransactionsResult {
@@ -194,6 +195,9 @@ export async function syncPendingTransactions(
             userId: Number(business.userId) || 1,
             subtotal: draft.subtotal,
             total: draft.total,
+            orderType: isSalesBusinessAccountType(business.account_type)
+              ? "sale"
+              : "service",
           });
         } catch (orderSyncError) {
           console.warn(
