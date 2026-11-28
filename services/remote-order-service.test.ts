@@ -153,6 +153,12 @@ describe("remote-order-service: sendOrderStatus", () => {
       ]);
 
     const orders = await fetchServerOrders(1);
+    expect(sendRequestModel).toHaveBeenCalledWith(
+      "eb_pos.order",
+      expect.objectContaining({
+        domain: [["create_uid", "=", 1]],
+      }),
+    );
     expect(orders).toHaveLength(1);
     expect(orders[0].reference).toBe("OrderRCTm-5555");
     expect(orders[0].items).toHaveLength(1);
@@ -190,6 +196,12 @@ describe("remote-order-service: sendOrderStatus", () => {
       ]);
 
     const orders = await fetchServerOrders(1);
+    expect(sendRequestModel).toHaveBeenCalledWith(
+      "eb_pos.order",
+      expect.objectContaining({
+        domain: [["create_uid", "=", 1]],
+      }),
+    );
     expect(orders).toHaveLength(1);
     expect(orders[0].items[0].productId).toBe("24");
     expect(orders[0].items[0].serviceId).toBeUndefined();

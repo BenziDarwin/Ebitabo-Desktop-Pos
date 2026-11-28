@@ -200,10 +200,7 @@ export async function fetchServerOrders(
       "state",
       "line_ids",
     ],
-    domain: [
-      ["create_uid", "=", userId],
-      ["state", "!=", "completed"],
-    ],
+    domain: [["create_uid", "=", userId]],
     page_no: 1,
     limit,
   };
